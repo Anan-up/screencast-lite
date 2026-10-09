@@ -1,3 +1,5 @@
+[English](README.md) | [简体中文](README_Simplified_Chinese.md) | [繁體中文](README_Classical_Chinese.md)
+
 # 极简投屏 · Screencast Lite
 
 把一个网页的画面，实时投到另一个网页。**纯白极简风格**，局域网 P2P 直连优先，不行自动降级服务器中转。
@@ -498,3 +500,10 @@ npm i -D puppeteer-core      # 或全局可用后设置 CHROME_PATH 指向 chrom
 CHROME_PATH=/usr/bin/chromium npm test
 ```
 
+## 项目截图
+
+![project-screenshot](project_screenshot.png)
+
+## 许可证
+
+[MIT](LICENSE)
