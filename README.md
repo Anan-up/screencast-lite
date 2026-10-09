@@ -39,9 +39,9 @@ LAN display     http://192.168.x.x:8080/view
 ## Dual-Mode Link
 
 ```
-                    ┌─ LAN P2P direct (preferred, lowest latency)
+                         ┌─ LAN P2P direct (preferred, lowest latency)
 Sender ──── negotiate ───┤
-                    └─ Server relay (automatic fallback when P2P fails)
+                         └─ Server relay (automatic fallback when P2P fails)
 ```
 
 ### Direct Mode (default)
