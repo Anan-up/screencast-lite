@@ -1,0 +1,1183 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>发送端 · 极简投屏</title>
+<link rel="stylesheet" href="/style.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%2318181b'/><rect x='26' y='34' width='48' height='32' rx='5' fill='white'/><rect x='42' y='70' width='16' height='5' rx='2.5' fill='white'/></svg>">
+<style>
+  body { background: var(--bg-soft); }
+
+  .topbar {
+    height: 56px;
+    padding: 0 22px;
+    background: rgba(255,255,255,.86);
+    backdrop-filter: saturate(180%) blur(14px);
+    border-bottom: 1px solid var(--line);
+    display: flex; align-items: center; gap: 12px;
+    position: sticky; top: 0; z-index: 50;
+  }
+  .topbar .logo { display: flex; align-items: center; gap: 9px; font-weight: 600; font-size: 14.5px; }
+  .topbar .logo-mark {
+    width: 26px; height: 26px; border-radius: 8px; background: var(--ink);
+    display: grid; place-items: center;
+  }
+  .topbar .spacer { flex: 1; }
+  .topbar a.back {
+    font-size: 13px; color: var(--ink-3); text-decoration: none;
+    display: flex; align-items: center; gap: 4px;
+  }
+  .topbar a.back:hover { color: var(--ink); }
+
+  .layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 372px;
+    gap: 22px;
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 22px;
+    align-items: start;
+  }
+
+  .stage-card {
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: var(--r-lg);
+    overflow: hidden;
+    box-shadow: var(--sh-sm);
+  }
+
+  .stage-head {
+    padding: 15px 18px;
+    border-bottom: 1px solid var(--line);
+    display: flex; align-items: center; gap: 10px;
+  }
+  .stage-head h2 { font-size: 14.5px; }
+  .stage-head .tag { margin-left: auto; }
+
+  .preview {
+    position: relative;
+    background: #fbfbfc;
+    aspect-ratio: 16 / 9;
+    display: grid; place-items: center;
+    overflow: hidden;
+  }
+  .preview video {
+    width: 100%; height: 100%;
+    object-fit: contain;
+    display: block;
+    background: #0a0a0b;
+  }
+  .preview .ph {
+    text-align: center;
+    color: var(--ink-3);
+    padding: 30px;
+  }
+  .preview .ph .ring {
+    width: 68px; height: 68px;
+    margin: 0 auto 16px;
+    border-radius: 50%;
+    border: 1.5px dashed var(--line-strong);
+    display: grid; place-items: center;
+    color: var(--ink-4);
+  }
+  .preview .ph h3 { font-size: 15px; color: var(--ink-2); margin-bottom: 6px; }
+  .preview .ph p { font-size: 13px; max-width: 320px; margin: 0 auto; line-height: 1.7; }
+
+  .stage-foot {
+    padding: 14px 18px;
+    border-top: 1px solid var(--line);
+    display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+  }
+  .stat {
+    display: flex; flex-direction: column; gap: 1px;
+    min-width: 62px;
+  }
+  .stat .k { font-size: 11px; color: var(--ink-4); letter-spacing: .02em; }
+  .stat .v { font-size: 13.5px; font-weight: 600; }
+  .stage-foot .sep { flex: 1; }
+
+  /* ---------- 侧栏 ---------- */
+  .side { display: flex; flex-direction: column; gap: 16px; }
+
+  .panel {
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: var(--r-lg);
+    box-shadow: var(--sh-sm);
+    overflow: hidden;
+  }
+  .panel-head {
+    padding: 13px 16px;
+    border-bottom: 1px solid var(--line);
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--ink-2);
+    letter-spacing: .02em;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .panel-body { padding: 16px; }
+
+  /* 房间码 */
+  .code-box {
+    text-align: center;
+    padding: 22px 16px 18px;
+  }
+  .code-box .lbl { font-size: 12px; color: var(--ink-4); margin-bottom: 12px; letter-spacing: .04em; }
+  .code-val {
+    font-size: 46px;
+    font-weight: 600;
+    letter-spacing: .16em;
+    line-height: 1;
+    font-family: ui-monospace, monospace;
+    color: var(--ink);
+    margin-left: .16em;
+    -webkit-user-select: all;
+    user-select: all;
+  }
+  .code-val.empty { color: var(--ink-4); letter-spacing: .12em; }
+  .code-actions { display: flex; gap: 8px; margin-top: 16px; }
+  .code-actions .btn { flex: 1; }
+
+  /* 二维码 */
+  .qr-wrap {
+    display: grid; place-items: center;
+    padding: 16px 16px 6px;
+  }
+  .qr-wrap canvas {
+    border-radius: var(--r);
+    border: 1px solid var(--line);
+    display: block;
+    max-width: 100%;
+  }
+  .qr-cap {
+    text-align: center;
+    font-size: 11.5px;
+    color: var(--ink-4);
+    padding: 0 16px 15px;
+    line-height: 1.7;
+  }
+  .qr-cap code {
+    font-family: ui-monospace, monospace;
+    font-size: 11px;
+    color: var(--ink-2);
+    word-break: break-all;
+  }
+
+  /* 观众列表 */
+  .viewers { max-height: 210px; overflow-y: auto; }
+  .viewer-row {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--line);
+    font-size: 13px;
+  }
+  .viewer-row:last-child { border-bottom: 0; }
+  .viewer-row .name { font-weight: 500; }
+  .viewer-row .meta { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+  .empty-row {
+    padding: 22px 16px;
+    text-align: center;
+    color: var(--ink-4);
+    font-size: 12.5px;
+  }
+
+  /* 设置行 */
+  .row {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 12px;
+    padding: 11px 16px;
+    border-bottom: 1px solid var(--line);
+    font-size: 13px;
+  }
+  .row:last-child { border-bottom: 0; }
+  .row .rk { color: var(--ink-2); }
+  .row .rv { display: flex; align-items: center; gap: 8px; }
+
+  select.mini {
+    height: 32px;
+    border: 1px solid var(--line-strong);
+    border-radius: var(--r-sm);
+    background: #fff;
+    padding: 0 8px;
+    font-size: 12.5px;
+    outline: none;
+    cursor: pointer;
+  }
+  select.mini:focus { border-color: var(--ink); }
+
+  /* 开关 */
+  .sw {
+    position: relative;
+    width: 38px; height: 22px;
+    border-radius: 999px;
+    background: #e4e4e7;
+    border: 0;
+    cursor: pointer;
+    transition: background .2s var(--ease);
+    flex: none;
+    padding: 0;
+  }
+  .sw::after {
+    content: '';
+    position: absolute;
+    top: 2px; left: 2px;
+    width: 18px; height: 18px;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: 0 1px 3px rgba(0,0,0,.18);
+    transition: transform .2s var(--ease);
+  }
+  .sw[aria-checked="true"] { background: var(--ink); }
+  .sw[aria-checked="true"]::after { transform: translateX(16px); }
+
+  /* 提示 */
+  .toast {
+    position: fixed;
+    left: 50%; bottom: 30px;
+    transform: translate(-50%, 12px);
+    background: var(--ink);
+    color: #fff;
+    font-size: 13px;
+    padding: 10px 18px;
+    border-radius: 999px;
+    box-shadow: var(--sh-lg);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .24s var(--ease), transform .24s var(--ease);
+    z-index: 200;
+    max-width: 82vw;
+  }
+  .toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+  /* 大按钮 */
+  .cta-wrap { padding: 16px; }
+
+  /* 帮助 */
+  .help-list { padding: 4px 16px 16px; }
+  .help-list li {
+    font-size: 12.5px;
+    color: var(--ink-2);
+    line-height: 1.75;
+    margin-bottom: 8px;
+  }
+  .help-list { list-style: none; margin: 0; padding-left: 16px; padding-right: 16px; }
+  .help-list li { position: relative; padding-left: 14px; }
+  .help-list li::before {
+    content: '';
+    position: absolute; left: 0; top: 9px;
+    width: 4px; height: 4px; border-radius: 50%;
+    background: var(--ink-4);
+  }
+  .help-list li:last-child { margin-bottom: 0; }
+
+  @media (max-width: 980px) {
+    .layout { grid-template-columns: 1fr; }
+  }
+  @media (max-width: 560px) {
+    .code-val { font-size: 38px; }
+    .topbar { padding: 0 14px; }
+    .layout { padding: 14px; gap: 14px; }
+  }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="logo">
+    <div class="logo-mark">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="2" y="4" width="20" height="13" rx="2.5"/><path d="M8 21h8"/>
+      </svg>
+    </div>
+    发送端
+  </div>
+  <div class="spacer"></div>
+  <span class="tag" id="linkTag"><span class="dot" id="linkDot"></span><span id="linkText">未连接</span></span>
+  <a class="back" href="/">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H6M12 5l-7 7 7 7"/></svg>
+    首页
+  </a>
+</header>
+
+<div class="layout">
+  <!-- ================= 左：预览台 ================= -->
+  <main class="stage-card">
+    <div class="stage-head">
+      <h2>画面预览</h2>
+      <span class="tag" id="recTag" style="display:none">
+        <span class="dot err pulse"></span>正在投屏
+      </span>
+    </div>
+
+    <div class="preview">
+      <video id="preview" autoplay playsinline muted></video>
+      <div class="ph" id="placeholder">
+        <div class="ring">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="2" y="4" width="20" height="13" rx="2.5"/>
+            <path d="M8 21h8M12 17v4"/>
+          </svg>
+        </div>
+        <h3>还没有开始投屏</h3>
+        <p>点击右侧「选择屏幕并开始投屏」，然后切到你要分享的画面即可。</p>
+      </div>
+    </div>
+
+    <div class="stage-foot">
+      <div class="stat"><span class="k">分辨率</span><span class="v mono" id="stRes">—</span></div>
+      <div class="stat"><span class="k">帧率</span><span class="v mono" id="stFps">—</span></div>
+      <div class="stat"><span class="k">码率</span><span class="v mono" id="stBit">—</span></div>
+      <div class="stat"><span class="k">时长</span><span class="v mono" id="stTime">00:00</span></div>
+      <div class="sep"></div>
+      <button class="btn btn-sm" id="btnPause" disabled>
+        <svg class="icon" style="width:14px;height:14px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4v16M15 4v16"/></svg>
+        暂停
+      </button>
+      <button class="btn btn-sm btn-danger" id="btnStop" disabled>停止投屏</button>
+    </div>
+  </main>
+
+  <!-- ================= 右：控制 ================= -->
+  <aside class="side">
+
+    <!-- 开始 -->
+    <div class="panel">
+      <div class="panel-head">投屏控制</div>
+      <div class="cta-wrap">
+        <button class="btn btn-primary btn-lg btn-block" id="btnStart">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="2" y="3" width="20" height="14" rx="2.5"/><path d="M8 21h8M12 17v4"/>
+          </svg>
+          选择屏幕并开始投屏
+        </button>
+        <p class="tiny muted" style="text-align:center;margin-top:11px;line-height:1.7">
+          浏览器会询问要分享的内容，可选<b>整个屏幕</b>或<b>某个窗口</b>
+        </p>
+      </div>
+    </div>
+
+    <!-- 房间码 -->
+    <div class="panel">
+      <div class="panel-head">房间码</div>
+      <div class="code-box">
+        <div class="lbl">在接收端输入这 4 位字符</div>
+        <div class="code-val empty" id="roomCode">————</div>
+        <div class="code-actions">
+          <button class="btn btn-sm" id="btnCopyCode" disabled>
+            <svg class="icon" style="width:14px;height:14px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+            复制
+          </button>
+          <button class="btn btn-sm" id="btnNewCode" disabled>换一个</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 扫码 -->
+    <div class="panel" id="qrPanel" style="display:none">
+      <div class="panel-head">扫码直达大屏</div>
+      <div class="qr-wrap"><canvas id="qrCanvas" width="196" height="196"></canvas></div>
+      <div class="qr-cap">
+        手机扫一扫，自动进入接收端并填好房间码<br>
+        <code id="qrUrl">—</code>
+      </div>
+    </div>
+
+    <!-- 观看端 -->
+    <div class="panel">
+      <div class="panel-head">
+        已连接大屏
+        <span class="tag" style="margin-left:auto;height:22px;padding:0 9px" id="viewerCount">0</span>
+      </div>
+      <div class="viewers" id="viewerList">
+        <div class="empty-row">还没有设备接入</div>
+      </div>
+    </div>
+
+    <!-- 参数 -->
+    <div class="panel">
+      <div class="panel-head">传输参数</div>
+      <div class="row">
+        <span class="rk">画质</span>
+        <div class="rv">
+          <select class="mini" id="selQuality">
+            <option value="smooth">流畅 · 1.5 Mbps</option>
+            <option value="standard" selected>标准 · 4 Mbps</option>
+            <option value="high">高清 · 8 Mbps</option>
+            <option value="ultra">超清 · 15 Mbps</option>
+          </select>
+        </div>
+      </div>
+      <div class="row">
+        <span class="rk">帧率</span>
+        <div class="rv">
+          <select class="mini" id="selFps">
+            <option value="15">15 fps</option>
+            <option value="30" selected>30 fps</option>
+            <option value="60">60 fps</option>
+          </select>
+        </div>
+      </div>
+      <div class="row">
+        <span class="rk">系统声音</span>
+        <button class="sw" id="swAudio" role="switch" aria-checked="false"></button>
+      </div>
+      <div class="row">
+        <span class="rk">链路模式</span>
+        <div class="rv"><span class="tag" style="height:22px;padding:0 9px" id="modeTag">自动</span></div>
+      </div>
+    </div>
+
+    <!-- 帮助 -->
+    <div class="panel">
+      <div class="panel-head">使用提示</div>
+      <ul class="help-list" style="padding-top:12px;padding-bottom:16px">
+        <li>大屏设备打开 <b>本机地址/view</b>，输入房间码即可。</li>
+        <li>同一局域网内会走 <b>P2P 直连</b>，延迟最低。</li>
+        <li>跨网络若直连失败，会自动降级为 <b>服务器中转</b>，无需手动切换。</li>
+        <li>点大屏上的画面可 <b>全屏</b>，按 Esc 退出。</li>
+        <li>浏览器标签页切到后台可能被限流，建议保持前台。</li>
+      </ul>
+    </div>
+
+  </aside>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="/js/qrcode.js"></script>
+<script src="/js/core.js"></script>
+<script src="/js/host.js"></script>
+<script>
+(function () {
+  'use strict';
+  const { $, fmtTime, createSignal, captureScreen, checkSupport,
+          gradePath, createHostTransport, QR } = window.Cast;
+
+  // ---------------- DOM ----------------
+  const el = {
+    preview: $('#preview'), placeholder: $('#placeholder'),
+    btnStart: $('#btnStart'), btnStop: $('#btnStop'), btnPause: $('#btnPause'),
+    roomCode: $('#roomCode'), btnCopyCode: $('#btnCopyCode'), btnNewCode: $('#btnNewCode'),
+    linkDot: $('#linkDot'), linkText: $('#linkText'),
+    recTag: $('#recTag'),
+    stRes: $('#stRes'), stFps: $('#stFps'), stBit: $('#stBit'), stTime: $('#stTime'),
+    viewerList: $('#viewerList'), viewerCount: $('#viewerCount'),
+    selQuality: $('#selQuality'), selFps: $('#selFps'), swAudio: $('#swAudio'),
+    modeTag: $('#modeTag'),
+    qrPanel: $('#qrPanel'), qrCanvas: $('#qrCanvas'), qrUrl: $('#qrUrl'),
+    toast: $('#toast'),
+  };
+
+  // ---------------- 状态 ----------------
+  let signal = null;
+  let host = null;
+  let stream = null;
+  let roomCode = null;
+  // 建房请求在途标记：signal.send 是 fire-and-forget，
+  // 在服务端 created 回来之前 roomCode 仍是 null，
+  // 单靠 roomCode 判重会让并发的两次触发都发出 create。
+  let creatingRoom = false;
+  // "本次断开是房间被别处接管引起的"——只用于让 close / reconnecting handler
+  // 显示正确的提示文案（而非误导性的"连接中断"/中性的"重连中 (n)"）。
+  // 不置位时，断开的默认原因是"网络问题"，close handler 显示"连接中断"。
+  //
+  // 清除时机（两处，谁先到谁生效）：
+  //   1) 重连成功（open handler）——"被接管"的语境到此结束；
+  //   2) 3 秒自动过期——兜底，防异常路径下标记残留、被之后一次**无关掉线**
+  //      误消费成假接管提示。
+  // **不**在 close handler 里清：onclose 的 close 与 reconnecting 是同 tick
+  // 连续派发的，这里清掉会让紧随其后的 reconnecting handler 用中性文案
+  // 覆盖掉刚设好的"房间被接管"。
+  let replacedRecently = false;
+  let replacedFlagTimer = null;   // 标记的自动过期定时器（防残留误报）
+  let started = false;
+  let paused = false;
+  // 页面正在卸载（刷新 / 关闭 / 跳走）。
+  //
+  // 为什么必须有它：beforeunload 里要 `stream.getTracks().forEach(t => t.stop())`
+  // 释放摄像头/屏幕采集，而按规范 `track.stop()` 会把 readyState 置为 'ended'
+  // 并**触发 ended 事件** —— 那个监听器会调 stop(true) → endSession() →
+  // `signal.send({ type: 'leave' })`。于是刚发出的 `host-away`（优雅重连标记）
+  // 会被紧随其后的 `leave` 覆盖：服务端 destroyRoom 立即销毁房间，
+  // 大屏看到的是"投屏已结束"而不是"发送端连接波动，正在恢复…"，
+  // README 承诺的"刷新后大屏无感续播"直接失效。
+  //
+  // 置位后 endSession 会跳过 leave，让 host-away 的优雅窗口真正生效。
+  let unloading = false;
+
+  // 出站信令打点：仅 ?debug=1 时写入，供自动化断言"某条没被发出"。
+  // 上限 500 条，避免长时间运行下无界增长。
+  const isDebug = new URLSearchParams(location.search).has('debug');
+  const DebugTx = [];
+
+  /**
+   * 统一的信令发送入口（带出站打点）。
+   *
+   * 为什么要多这一层：自动化用例需要断言"某条消息**没有**被发出"，
+   * 而"没发出"在 UI 和服务端状态上都不可观测。唯一的观测点是发送端。
+   *
+   * 为什么不直接覆盖 signal.send：core.js 里 send 是用 Object.defineProperties
+   * 定义的（configurable 默认 false），再 defineProperty 会抛 TypeError。
+   * 所以在呼叫侧包一层，而不是给 signal 打补丁。
+   */
+  function sendSig(obj) {
+    try {
+      if (obj && obj.type && isDebug && DebugTx.length < 500) {
+        DebugTx.push({ type: obj.type, t: Date.now() });
+      }
+    } catch {}
+    return signal.send(obj);
+  }
+  let startedAt = 0;
+  let pausedTotal = 0;
+  let pausedSince = 0;
+  let statTimer = null;
+  let lastBytes = 0;
+  let lastBytesTime = 0;
+  const viewerMap = new Map(); // viewerId -> { ip, mode, status }
+
+  // 本页固定的房间码：停止后重新开播仍沿用同一个码，
+  // 这样大屏无需重新输入即可自动接回
+  const CODE_KEY = 'screencast.roomCode';
+  let preferredCode = (() => {
+    try {
+      const s = sessionStorage.getItem(CODE_KEY);
+      return s && /^[A-Z0-9]{4,6}$/.test(s) ? s : null;
+    } catch { return null; }
+  })();
+
+  function rememberCode(c) {
+    preferredCode = c;
+    try { sessionStorage.setItem(CODE_KEY, c); } catch {}
+  }
+
+  const QUALITY = {
+    smooth:   { bitrate: 1_500_000, fps: 15 },
+    standard: { bitrate: 4_000_000, fps: 30 },
+    high:     { bitrate: 8_000_000, fps: 30 },
+    ultra:    { bitrate: 15_000_000, fps: 60 },
+  };
+
+  // ---------------- 通用 ----------------
+  let toastTimer = null;
+  function toast(msg) {
+    el.toast.textContent = msg;
+    el.toast.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => el.toast.classList.remove('show'), 2400);
+  }
+
+  function setLink(state, text) {
+    el.linkDot.className = 'dot ' + (state || '');
+    el.linkText.textContent = text;
+  }
+
+  function currentParams() {
+    const q = QUALITY[el.selQuality.value] || QUALITY.standard;
+    const fps = parseInt(el.selFps.value, 10);
+    return { bitrate: q.bitrate, fps };
+  }
+
+  function log(...a) { console.log('[发送端]', ...a); }
+
+  // ---------------- 支持性检查 ----------------
+  const support = checkSupport();
+  if (!support.ok) {
+    el.btnStart.disabled = true;
+    el.btnStart.innerHTML = '浏览器不支持投屏';
+    toast(support.issues[0]);
+  }
+
+  // ---------------- 信令 ----------------
+  function initSignal() {
+    signal = createSignal();
+    host = createHostTransport(signal, currentParams);
+    // 调试把手：仅在 ?debug=1 时暴露，供自动化测试读取内部状态
+    if (new URLSearchParams(location.search).has('debug')) {
+      window.__host = host;
+      window.__signal = signal;
+      // 测试钩子：把 `started` 置位，使自动化能够在不走 getDisplayMedia
+      // 授权交互（headless 下必须弹系统选择器，无法自动化）的前提下，
+      // 触达那些以 `if (!started) return` 守卫的分支（如 btnNewCode）。
+      // 生产路径不受影响：只有带 ?debug=1 时这个函数才存在。
+      window.__forceStarted = () => { started = true; };
+      // 出站信令痕迹：直接指向 sendSig 写入的 DebugTx（同一数组，无需复制）。
+      // 用途：断言"某条消息**没有**被发出"（例如卸载期间不得发 leave）——
+      // 这类否定断言靠 UI 或服务端状态都观测不到，只能从发送端记录。
+      window.__sent = DebugTx;
+      // 直接驱动 endSession，供用例复现"卸载路径下不得发 leave"。
+      window.__endSession = () => endSession();
+      window.__setUnloading = (v) => { unloading = !!v; };
+      window.__getUnloading = () => unloading;
+    }
+
+    signal.on('open', () => {
+      // 重连成功 = 已换到新连接，"被接管"的语境到此结束。
+      // 标记在此清除（而非在 close handler）：close 与 reconnecting 在同一
+      // tick 内先后派发，标记必须活到重连完成，否则中间文案会被覆盖。
+      replacedRecently = false;
+      clearTimeout(replacedFlagTimer);
+      setLink('live', '服务已连接');
+      // 唯一的建房触发点（连同「信令已就绪时 start() 直连创建」共两处，
+      // 但两者由 creatingRoom + roomCode 双重判重，不会重复 create）
+      ensureRoom();
+    });
+
+    signal.on('close', () => {
+      // 文案要区分断开原因，否则会误导用户：
+      //   - 房间被别处接管时，断开是**预期内**的（replaced handler 主动换连接）。
+      //     若这里仍显示"连接中断"，用户会以为是自己网络出问题。
+      //   - 其余情况（真掉线/服务重启）才是"连接中断"。
+      //
+      // 说明为什么不能只靠 replaced handler 里的 setLink：那里设的文案会被
+      // 本 handler 的 setLink 覆盖（reconnectNow 关连接 → onclose → 本 handler），
+      // 用户先看到"房间被接管"、随即被冲成"连接中断"，观感是"网络坏了"。
+      //
+      // 注意：**不**在此处清除 replacedRecently。原因是 onclose 里
+      // `emit('close')` 之后**同一同步 tick 内**紧跟着 `emit('reconnecting')`，
+      // 若这里就把标记清掉，紧随其后的 reconnecting handler 会显示"重连中 (1)"，
+      // 把刚设的"房间被接管"覆盖掉 —— 用户根本来不及看见（MutationObserver
+      // 也观测不到该中间值）。标记必须活到重连完成，由 open handler 清除。
+      if (replacedRecently) {
+        setLink('warn', '房间被接管，正在重连');
+      } else {
+        setLink('err', '连接中断');
+      }
+      // 关键：服务端在 host 的 ws 关闭时已经 destroyRoom(code)，
+      // 房间里所有观看端都被 room-closed 断开，但**发送端这边不会收到任何
+      // viewer-left 通知**（viewer-left 只在观看端自己的 ws 关闭时发出）。
+      // 因此必须在这里把两侧状态一并清干净：
+      //   - roomCode 不清 → 重连后 ensureRoom() 直接 return，房间永远建不回来；
+      //   - viewerMap 不清 → 重连新建的空房间里，旧 viewerId 变成"幽灵大屏"，
+      //     新大屏接入后 UI 同时显示两块，还会污染 modeTag 的链路聚合；
+      //   - host.peers 不清 → 幽灵只清掉了 UI 一层，传输层仍持有旧 RTCPeerConnection
+      //     与旧 viewerId。旧大屏自动回归后会 addViewer(新 id)，而旧 id 永远
+      //     挂在 peers 里不被回收，导致 stats/peerIds 长期虚高。
+      //     这一条是之前漏掉的：只 clear(viewerMap) 时，UI 计数归零但 peers 没清，
+      //     两者从此脱钩，回归测试里表现为"计数=0 但 peerIds 仍有 1 条"。
+      if (roomCode) {
+        roomCode = null;
+        renderRoom();
+        el.qrPanel.style.display = 'none';
+      }
+      creatingRoom = false;
+      viewerMap.clear();
+      try { host.reset(); } catch (e) { console.error('[发送端] reset 失败', e); }
+      renderViewers();
+      updateModeTag();
+    });
+
+    // 重连期间保持"房间被接管"的语境，不要用中性/暗示网络的"重连中 (n)"覆盖它：
+    // onclose 里 close 与 reconnecting 是同一 tick 内先后派发的，若这里无条件
+    // 覆盖，"房间被接管"会瞬间消失，用户看到的就是纯网络错误的措辞。
+    signal.on('reconnecting', ({ attempt }) => {
+      if (replacedRecently) setLink('warn', `房间被接管，正在重连 (${attempt})`);
+      else setLink('warn', `重连中 (${attempt})`);
+    });
+
+    signal.on('created', async (m) => {
+      creatingRoom = false;
+      roomCode = m.code;
+      rememberCode(m.code);
+      host.setTurn(m.turn);
+      renderRoom();
+      log('房间已创建', m.code);
+      buildQr();
+      // 复用了原房间码 ⇒ 说明刚才是信令抖动而非真正停止，大屏此时多半
+      // 还停在"发送端连接波动，正在恢复…"的提示上。发一条 host-return
+      // 把它撤掉，大屏即可无感续播（房间没销毁过，观看端连接都还在）。
+      //
+      // 只在 reused 时发：全新房间码意味着大屏不可能看到过 host-away，
+      // 发了不仅没用，还会让一条空房间里的 host-return 触发无谓的 clearAwayState。
+      if (m.reused) {
+        signal.notifyReturn();
+        log('已回归原房间，通知大屏恢复正常');
+      }
+    });
+
+    // 观看端加入 → 建连
+    signal.on('viewer-joined', (m) => {
+      // 两个来源都表示"这不是新设备"：
+      //  - viewerMap.has()：同一次会话内重复收到
+      //  - m.rejoined：服务端在 create(reused) 后补发的清单，
+      //    此时 viewerMap 已被 close 清空，has() 一定为 false
+      const isRejoin = m.rejoined || viewerMap.has(m.viewerId);
+      viewerMap.set(m.viewerId, { ip: m.ip, mode: 'connecting', status: {}, sameLan: m.sameLan });
+      renderViewers();
+      // addViewer 内部对已存在的 id 会先 removeViewer 再重建，安全
+      host.addViewer(m.viewerId);
+      log(isRejoin ? '观看端重连' : '观看端加入', m.viewerId, m.ip);
+      // 重连不弹 toast：设备一直都在，弹了反而让人以为插进来一台新设备
+      if (!isRejoin && viewerMap.size === 1) toast('有设备接入了');
+    });
+
+    signal.on('answer', (m) => host.onAnswer(m.viewerId, m.sdp, m.seq));
+    signal.on('ice', (m) => host.onIce(m.viewerId, m.candidate));
+
+    signal.on('viewer-status', (m) => {
+      // 先喂给传输层（链路存活判定的权威依据），再更新 UI
+      host.onViewerStatus(m);
+      const v = viewerMap.get(m.viewerId);
+      if (v) { v.status = { ...v.status, ...omitId(m) }; renderViewers(); }
+    });
+
+    signal.on('viewer-left', (m) => {
+      viewerMap.delete(m.viewerId);
+      host.removeViewer(m.viewerId);
+      renderViewers();
+      log('观看端离开', m.viewerId);
+    });
+
+    signal.on('replaced', () => {
+      // 语义：服务端把本连接标为 'replaced'，之后 handleSignal 入口会
+      // 对本连接的一切消息静默丢弃 —— 这条 ws 还开着，但已经"哑"了。
+      // （当前协议下此分支**不可达**，见 README「关于 replaced」；保留是因为
+      //   一旦将来放开「强制接管同码房间」，这里会立刻变成热路径。）
+      //
+      // 处置：只做两件事——提示用户、换一条新 ws。
+      //  **不做**本地状态清理：那正是 signal.on('close') 的职责，
+      //  而且 we 下面调用的 reconnectNow() 会立刻触发 onclose → close handler，
+      //  在这里重复清一遍属于"两次清同一份状态"；今天各操作恰好幂等才没出错，
+      //  但只要 close handler 将来加入任何非幂等动作（例如补发某条信令），
+      //  就会变成重复执行。清状态这件事有且只有 close handler 一处负责。
+      // 置位一次性标记，让随后的 close handler 显示"房间被接管，正在重连"
+      // 而不是"连接中断"。**不**在这里调 setLink：
+      // reconnectNow() 会触发 onclose → close handler，那里的 setLink 会
+      // 把这里设的文案立刻覆盖掉，等于白设（用户会看到误导性的"连接中断"）。
+      //
+      // 加 3 秒自动过期：正常路径下 close 几乎立刻到达并消费掉该标记；
+      // 若因某种异常没有触发 close，标记不会无限期残留 —— 否则它会被
+      // 之后任意一次**无关**的掉线消费掉，把真正该显示的"连接中断"
+      // 误报成"房间被接管，正在重连"。
+      replacedRecently = true;
+      clearTimeout(replacedFlagTimer);
+      replacedFlagTimer = setTimeout(() => { replacedRecently = false; }, 3000);
+      toast('此房间已在别处重新创建，正在重新连接…');
+      // 必须用 reconnectNow()，**不能**用 close()：
+      // close() 会把 closedByUser 置 true，而该标记永不复位，
+      // 之后 ws.onclose 直接 return，信令层永久失联、只能刷新页面。
+      try { signal.reconnectNow(); } catch { /* ignore */ }
+    });
+    signal.on('refreshed', () => { /* 忽略 */ });
+
+    // 传输层事件
+    host.on('peer-connected', ({ viewerId, mode }) => {
+      // 去重：连接瞬间会先发一个中性态 p2p-pending，随后 detectPathAsync
+      // 用真实候选对修正成最终模式，handler 因此可能被调用两次。
+      const v = viewerMap.get(viewerId);
+      if (v && v.mode === mode) return;
+      if (v) { v.mode = mode; renderViewers(); }
+      updateModeTag();
+      log('P2P 已连通', viewerId, mode);
+    });
+
+    host.on('peer-mode', ({ viewerId, mode, reason }) => {
+      const v = viewerMap.get(viewerId);
+      if (v) { v.mode = mode; v.reason = reason; renderViewers(); }
+      updateModeTag();
+      if (mode === 'relay') log('已切中继', viewerId, reason);
+    });
+
+    host.on('peer-creating', () => {});
+  }
+
+  function omitId(o) {
+    const { viewerId, type, ...rest } = o;
+    return rest;
+  }
+
+  function createRoom(forceNew) {
+    const code = forceNew ? null : preferredCode;
+    signal.send({
+      type: 'create',
+      code: code || undefined,
+      lanOrigin: location.origin,
+      iceServersHint: null,
+    });
+  }
+
+  /**
+   * 幂等建房：仅在已开播、尚无房间码、且没有在途请求时执行。
+   * 触发点有两处（start() 的信令已就绪路径 / open 事件回调），
+   * 靠 roomCode + creatingRoom 双重判重，避免并发重复 create。
+   * 注：signal.send 是 fire-and-forget，created 到达前 roomCode 仍是 null，
+   * 所以必须有 creatingRoom 这个在途标记兜住并发。
+   */
+  function ensureRoom(forceNew) {
+    if (!started) return;
+    if (roomCode || creatingRoom) return;
+    if (!signal || signal.state !== 1) return;
+    creatingRoom = true;
+    createRoom(forceNew);
+  }
+
+  // ---------------- 渲染 ----------------
+  function renderRoom() {
+    el.roomCode.textContent = roomCode || '————';
+    el.roomCode.classList.toggle('empty', !roomCode);
+    el.btnCopyCode.disabled = !roomCode;
+    el.btnNewCode.disabled = !roomCode;
+  }
+
+  function renderViewers() {
+    el.viewerCount.textContent = String(viewerMap.size);
+    if (viewerMap.size === 0) {
+      el.viewerList.innerHTML = '<div class="empty-row">还没有设备接入</div>';
+      return;
+    }
+    const rows = [];
+    let i = 1;
+    for (const [id, v] of viewerMap) {
+      const g = gradePath(v.mode, v.status);
+      const bits = [];
+      if (v.status.res) bits.push(v.status.res);
+      if (v.status.fps) bits.push(v.status.fps + 'fps');
+      if (v.status.rtt != null) bits.push(v.status.rtt + 'ms');
+      rows.push(`
+        <div class="viewer-row">
+          <span class="dot ${g.tone}" style="width:6px;height:6px"></span>
+          <span class="name">大屏 ${i}</span>
+          <span class="meta">
+            <span class="tiny muted mono">${bits.join(' · ') || v.ip || ''}</span>
+            <span class="tag" style="height:21px;padding:0 8px;font-size:11.5px">${g.label}</span>
+          </span>
+        </div>`);
+      i++;
+    }
+    el.viewerList.innerHTML = rows.join('');
+  }
+
+  function updateModeTag() {
+    let hasRelay = false, hasP2p = false, hasConnecting = false;
+    for (const [, v] of viewerMap) {
+      // p2p-relay 也是"走了 TURN 中转的 P2P"——gradePath() 明确把它标为
+      // 「TURN 中转」/ tone: warn。早期它落进 else 分支被聚合成"P2P 直连"，
+      // 与单条链路的标签自相矛盾。
+      if (v.mode === 'relay' || v.mode === 'relay-blob' || v.mode === 'p2p-relay') hasRelay = true;
+      else if (v.mode === 'connecting') hasConnecting = true;
+      else hasP2p = true;
+    }
+    if (viewerMap.size === 0) { el.modeTag.textContent = '待接入'; return; }
+    if (hasRelay && !hasP2p) el.modeTag.textContent = '服务器中转';
+    else if (hasRelay && hasP2p) el.modeTag.textContent = '混合链路';
+    else if (hasP2p) el.modeTag.textContent = 'P2P 直连';
+    else if (hasConnecting) el.modeTag.textContent = '协商中';
+  }
+
+  // ---------------- 二维码 ----------------
+  function buildQr() {
+    if (!roomCode) { el.qrPanel.style.display = 'none'; return; }
+    const url = `${location.origin}/view?r=${roomCode}`;
+    el.qrUrl.textContent = url;
+    const cv = QR.toCanvas(url, 196);
+    if (!cv) { el.qrPanel.style.display = 'none'; return; }
+    const target = el.qrCanvas;
+    target.width = cv.width; target.height = cv.height;
+    target.style.width = '196px'; target.style.height = '196px';
+    const ctx = target.getContext('2d');
+    ctx.clearRect(0, 0, target.width, target.height);
+    ctx.drawImage(cv, 0, 0);
+    el.qrPanel.style.display = '';
+  }
+
+  // ---------------- 开始投屏 ----------------
+  async function start() {
+    if (!support.ok) { toast(support.issues[0]); return; }
+    el.btnStart.disabled = true;
+    el.btnStart.innerHTML = '正在启动…';
+
+    try {
+      // 注意：帧率由 captureScreen 的 fps 选项决定，取自 el.selFps。
+      // 早期这里有一行 `const { fps } = currentParams()`，但下面用的是
+      // parseInt(el.selFps.value) 而非解构出的 fps —— 一个从不被读取的
+      // 死变量，会让读者误以为 currentParams() 参与了帧率决策。已删除。
+      stream = await captureScreen({
+        fps: parseInt(el.selFps.value, 10),
+        systemAudio: el.swAudio.getAttribute('aria-checked') === 'true',
+        surface: 'monitor',
+      });
+    } catch (e) {
+      el.btnStart.disabled = false;
+      el.btnStart.innerHTML = '选择屏幕并开始投屏';
+      if (e.name === 'NotAllowedError') toast('已取消：未授权屏幕采集');
+      else if (e.code === 'UNSUPPORTED') toast('当前浏览器不支持屏幕采集');
+      else toast('屏幕采集失败：' + (e.message || e.name));
+      return;
+    }
+
+    // 用户从浏览器自带 UI 停止共享
+    stream.getVideoTracks()[0].addEventListener('ended', () => {
+      log('用户停止了共享');
+      stop(true);
+    });
+
+    started = true;
+    paused = false;
+    startedAt = Date.now();
+    pausedTotal = 0;
+    pausedSince = 0;
+
+    // 预览
+    el.preview.srcObject = stream;
+    el.placeholder.style.display = 'none';
+    el.preview.play().catch(() => {});
+
+    // 按钮态
+    el.btnStart.innerHTML = '投屏进行中';
+    el.btnStop.disabled = false;
+    el.btnPause.disabled = false;
+    el.recTag.style.display = '';
+    el.btnNewCode.disabled = false;
+
+    host.setStream(stream);
+    const { bitrate } = currentParams();
+    host.retune(bitrate, parseInt(el.selFps.value, 10));
+
+    if (!signal) initSignal();
+    // 信令已就绪则立即建房；未就绪时不要在这里再注册一个 open 监听
+    // —— initSignal() 注册的那个 open 回调已经会调用 ensureRoom()。
+    // 两处都注册会导致 open 触发时 ensureRoom() 被并发调用两次，
+    // 而 created 尚未返回、roomCode 仍为 null，于是发出两个 create：
+    // 服务端分配两个房间码，第二个 create 会 destroyRoom(第一个码)，
+    // 把刚建好（可能已有 viewer 加入）的房间直接销毁。
+    if (signal.state === 1) ensureRoom();
+
+    startStats();
+    toast('投屏已开始');
+  }
+
+  function endSession() {
+    started = false;
+    paused = false;
+
+    stopStats();
+    // 复位暂停标记：host 实例会被复用（stop 后再次开播走的是同一个 host），
+    // 若不停在这里，上一次暂停留下的 pausedByUser=true 会让**新一轮**投屏的
+    // 看门狗永久失效（等于关掉了"接收端静默中断"的保护）。
+    try { host && host.setPaused(false); } catch {}
+    host && host.destroy();
+
+    if (stream) {
+      for (const t of stream.getTracks()) { try { t.stop(); } catch {} }
+      stream = null;
+    }
+    el.preview.srcObject = null;
+    el.placeholder.style.display = '';
+    el.recTag.style.display = 'none';
+
+    el.btnStart.disabled = false;
+    el.btnStart.innerHTML = '选择屏幕并开始投屏';
+    el.btnStop.disabled = true;
+    el.btnPause.disabled = true;
+    el.btnPause.innerHTML = '暂停';
+
+    // 通知服务端作废房间，观看端会立即收到 room-closed。
+    //
+    // ⚠️ 卸载中必须跳过：见下方 `unloading` 的说明。
+    // 用 sendSig 而不是 signal.send：这里要能被自动化用例观测到
+    // "发了 / 没发"。见 sendSig 定义处的说明。
+    if (!unloading && signal && signal.state === 1 && roomCode) {
+      sendSig({ type: 'leave' });
+    }
+
+    // 注意：这里保留 preferredCode，下次开播沿用同一个房间码，
+    // 大屏无需重新输入即可自动接回
+    roomCode = null;
+    creatingRoom = false;
+    renderRoom();
+    viewerMap.clear();
+    renderViewers();
+    updateModeTag();
+    el.qrPanel.style.display = 'none';
+
+    // 重置统计
+    el.stRes.textContent = '—'; el.stFps.textContent = '—';
+    el.stBit.textContent = '—'; el.stTime.textContent = '00:00';
+    lastBytes = 0; lastBytesTime = 0;
+  }
+
+  async function stop(silent) {
+    if (!started) return;
+    endSession();
+    if (!silent) toast('投屏已停止');
+  }
+
+  function togglePause() {
+    if (!stream || !started) return;
+    paused = !paused;
+    // 一刀切开关全部轨道（含音频）。早期这里还取过 vt/at 想做音视频分别控制，
+    // 最终没有实现，留下两个未使用变量误导读者，已删除。
+    for (const t of stream.getTracks()) t.enabled = !paused;
+    // 必须同步告知传输层：暂停期间接收端 framesDecoded 不再增长，而
+    // viewer-status 仍在定时上报（PC 仍 connected），看门狗会在 15 秒后
+    // 误判为"静默中断"并把这条大屏**不可逆地**切到中继。
+    // 见 host.js 里 setPaused 的注释。
+    try { host && host.setPaused(paused); } catch {}
+    if (paused) {
+      pausedSince = Date.now();
+      el.btnPause.innerHTML = '继续';
+      toast('已暂停推送（画面只剩最后一帧）');
+    } else {
+      pausedTotal += Date.now() - pausedSince;
+      pausedSince = 0;
+      el.btnPause.innerHTML = '暂停';
+      toast('已恢复推送');
+    }
+  }
+
+  // ---------------- 统计 ----------------
+  function startStats() {
+    stopStats();
+    statTimer = setInterval(async () => {
+      if (!stream) return;
+      const vt = stream.getVideoTracks()[0];
+      const s = vt.getSettings ? vt.getSettings() : {};
+      el.stRes.textContent = s.width && s.height ? `${s.width}×${s.height}` : '—';
+
+      let elapsed = (Date.now() - startedAt - pausedTotal -
+        (pausedSince ? Date.now() - pausedSince : 0)) / 1000;
+      el.stTime.textContent = fmtTime(elapsed);
+
+      // 用发送端 RTP 出站字节数估算真实码率
+      let fps = null, bitrate = null;
+      const firstMode = [...viewerMap.values()].find(v => v.mode !== 'relay' && v.mode !== 'connecting');
+      if (firstMode) {
+        const entry = [...host.getPeers().values()].find(e => e.pc);
+        if (entry && entry.pc) {
+          try {
+            const stats = await entry.pc.getStats();
+            stats.forEach((r) => {
+              if (r.type === 'outbound-rtp' && r.kind === 'video') {
+                fps = r.framesPerSecond;
+                if (r.bytesSent != null) {
+                  const now = performance.now();
+                  if (lastBytesTime) {
+                    bitrate = ((r.bytesSent - lastBytes) * 8) / ((now - lastBytesTime) / 1000);
+                  }
+                  lastBytes = r.bytesSent;
+                  lastBytesTime = now;
+                }
+              }
+            });
+          } catch {}
+        }
+      } else {
+        // 中继模式：用 MediaRecorder 的目标码率作为显示
+        const relayEntry = [...host.getPeers().values()].find(e => e.relayActive);
+        if (relayEntry) { bitrate = 2_500_000; fps = parseInt(el.selFps.value, 10); }
+      }
+
+      el.stFps.textContent = fps != null ? fps + ' fps' : (paused ? '暂停' : '—');
+      el.stBit.textContent = bitrate != null ? (bitrate / 1e6).toFixed(1) + ' Mbps' : '—';
+    }, 1000);
+  }
+
+  function stopStats() {
+    clearInterval(statTimer);
+    statTimer = null;
+  }
+
+  // ---------------- 绑定 ----------------
+  el.btnStart.addEventListener('click', () => {
+    if (started) return;
+    start();
+  });
+
+  el.btnStop.addEventListener('click', () => stop(false));
+  el.btnPause.addEventListener('click', togglePause);
+
+  el.btnCopyCode.addEventListener('click', async () => {
+    if (!roomCode) return;
+    try {
+      await navigator.clipboard.writeText(roomCode);
+      toast('房间码已复制');
+    } catch {
+      // 降级
+      const ta = document.createElement('textarea');
+      ta.value = roomCode;
+      document.body.appendChild(ta);
+      ta.select();
+      try { document.execCommand('copy'); toast('房间码已复制'); }
+      catch { toast('复制失败，请手动选择'); }
+      ta.remove();
+    }
+  });
+
+  el.btnNewCode.addEventListener('click', () => {
+    if (!started) { toast('请先开始投屏'); return; }
+    // 先作废旧房间，观看端会收到 room-closed 并回到待机
+    if (signal && signal.state === 1 && roomCode) {
+      signal.send({ type: 'leave' });
+    }
+    viewerMap.clear();
+    // 只清 viewerMap 是不够的：UI 归零了，但 host.peers 里每个 viewerId 都还
+    // 挂着旧的 RTCPeerConnection / 看门狗 / 中继登记。旧大屏若复用同一 id 回归，
+    // addViewer 会先 removeViewer 兜住；但**不复用**时这些条目永远不被回收，
+    // 于是 stats/peerIds 长期虚高、与 viewerMap 脱钩（两者从此各自记数）。
+    // 这正是 README「信令断开时必须同时清三处状态」警告的第三处，此前只在
+    // signal.on('close') 与 endSession() 里清了，btnNewCode 路径漏掉。
+    // 用 reset() 而非 destroy()：destroy() 会连带停掉本地 stream，
+    // 而这里换码后还要用同一条流继续投屏。
+    try { host && host.reset(); } catch (e) { console.error('[发送端] reset 失败', e); }
+    renderViewers();
+    updateModeTag();
+    roomCode = null;
+    creatingRoom = false;
+    preferredCode = null;
+    try { sessionStorage.removeItem(CODE_KEY); } catch {}
+    renderRoom();
+    el.qrPanel.style.display = 'none';
+    // 短暂延迟后创建新房间，确保 leave 先被服务端处理
+    setTimeout(() => {
+      if (started && signal && signal.state === 1) ensureRoom(true);
+    }, 120);
+    toast('已作废旧房间，正在生成新房间码');
+  });
+
+  el.selQuality.addEventListener('change', () => {
+    const { bitrate, fps } = currentParams();
+    host && host.retune(bitrate, fps);
+    toast(`画质已切换：${el.selQuality.options[el.selQuality.selectedIndex].text}`);
+  });
+
+  el.selFps.addEventListener('change', () => {
+    const { bitrate, fps } = currentParams();
+    host && host.retune(bitrate, fps);
+  });
+
+  el.swAudio.addEventListener('click', () => {
+    const on = el.swAudio.getAttribute('aria-checked') === 'true';
+    el.swAudio.setAttribute('aria-checked', String(!on));
+    if (started) toast('声音设置将在下次投屏时生效');
+  });
+
+  window.addEventListener('beforeunload', () => {
+    // 刷新/关闭页面前先告知服务端"我只是临时离开"，让房间进入优雅重连窗口。
+    // 这样刷新后大屏不会看到"投屏已结束"，而是"发送端连接波动，正在恢复…"，
+    // 页面重载 → 复用原房间码 → host-return → 大屏无感续播。
+    //
+    // 必须放在 host.destroy() 之前：destroy 会关掉 RTCPeerConnection，
+    // 但真正让信令断掉的是浏览器随后关闭 ws，所以这里只要赶在它之前发即可。
+    // 另外这是 best-effort —— 卸载阶段 ws 可能已是 CLOSING，消息会丢，
+    // 丢了的后果也不严重（退化为"立即销毁 + 大屏自动重试"）。
+    //
+    // ⚠️ 第一件事就是把 unloading 置位：下面第 3 行的 track.stop() 会触发
+    // `ended` → stop(true) → endSession() → 发 leave，把刚发的 host-away
+    // 顶掉、房间立即销毁。置位后 endSession 会跳过那一条 leave。
+    unloading = true;
+    try { signal && signal.state === 1 && started && roomCode && signal.notifyAway(); } catch {}
+    try { host && host.destroy(); } catch {}
+    try { stream && stream.getTracks().forEach(t => t.stop()); } catch {}
+  });
+
+  // 初始化信令
+  initSignal();
+  renderRoom();
+  renderViewers();
+  updateModeTag();
+})();
+</script>
+</body>
+</html>

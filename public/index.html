@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>极简投屏</title>
+<link rel="stylesheet" href="/style.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%2318181b'/><rect x='26' y='34' width='48' height='32' rx='5' fill='white'/><rect x='42' y='70' width='16' height='5' rx='2.5' fill='white'/></svg>">
+<style>
+  .wrap {
+    min-height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 40px 24px;
+  }
+  .brand { text-align: center; margin-bottom: 44px; }
+  .brand .mark {
+    width: 54px; height: 54px;
+    margin: 0 auto 18px;
+    border-radius: 15px;
+    background: var(--ink);
+    display: grid; place-items: center;
+    box-shadow: var(--sh);
+  }
+  .brand h1 { font-size: 27px; letter-spacing: -.02em; }
+  .brand .sub { margin-top: 9px; color: var(--ink-3); font-size: 14px; }
+
+  .choices {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+    width: 100%;
+    max-width: 660px;
+  }
+  .choice {
+    display: block;
+    padding: 26px 24px;
+    border: 1px solid var(--line);
+    border-radius: var(--r-xl);
+    background: #fff;
+    box-shadow: var(--sh-sm);
+    text-decoration: none;
+    color: inherit;
+    transition: box-shadow .22s var(--ease), transform .22s var(--ease),
+                border-color .22s var(--ease);
+  }
+  .choice:hover {
+    box-shadow: var(--sh-lg);
+    transform: translateY(-2px);
+    border-color: var(--line-strong);
+  }
+  .choice .ci {
+    width: 40px; height: 40px;
+    border-radius: 11px;
+    display: grid; place-items: center;
+    background: var(--bg-soft);
+    border: 1px solid var(--line);
+    margin-bottom: 16px;
+  }
+  .choice h2 { font-size: 16px; margin-bottom: 7px; }
+  .choice p { font-size: 13px; color: var(--ink-3); line-height: 1.65; }
+  .choice .go {
+    margin-top: 16px;
+    font-size: 13px;
+    color: var(--ink-2);
+    display: flex; align-items: center; gap: 5px;
+    font-weight: 500;
+  }
+  .choice:hover .go { color: var(--ink); }
+  .choice .go svg { transition: transform .22s var(--ease); }
+  .choice:hover .go svg { transform: translateX(3px); }
+
+  .foot {
+    margin-top: 40px;
+    text-align: center;
+    color: var(--ink-4);
+    font-size: 12px;
+    line-height: 1.9;
+  }
+  .foot code {
+    font-family: ui-monospace, monospace;
+    background: var(--bg-soft);
+    border: 1px solid var(--line);
+    padding: 2px 6px;
+    border-radius: 5px;
+    font-size: 11.5px;
+    color: var(--ink-2);
+  }
+
+  @media (max-width: 620px) {
+    .choices { grid-template-columns: 1fr; }
+    .brand h1 { font-size: 23px; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="brand">
+    <div class="mark">
+      <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="2" y="4" width="20" height="13" rx="2.5"/>
+        <path d="M8 21h8M12 17v4"/>
+      </svg>
+    </div>
+    <h1>极简投屏</h1>
+    <p class="sub">把一个网页的画面，实时投到另一个网页</p>
+  </div>
+
+  <div class="choices">
+    <a class="choice" href="/cast">
+      <div class="ci">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 19v3M7 22h10"/>
+          <rect x="2" y="3" width="20" height="14" rx="2.5"/>
+          <path d="M12 7v6M9 10l3-3 3 3"/>
+        </svg>
+      </div>
+      <h2>发送端</h2>
+      <p>在你要投屏的电脑上打开。选择屏幕或窗口，生成房间码。</p>
+      <div class="go">开始投屏
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h13M12 5l7 7-7 7"/></svg>
+      </div>
+    </a>
+
+    <a class="choice" href="/view">
+      <div class="ci">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="2" y="4" width="20" height="13" rx="2.5"/>
+          <path d="M8 21h8M12 17v4"/>
+          <path d="M9 10.5l3-2 3 2"/>
+        </svg>
+      </div>
+      <h2>接收端</h2>
+      <p>在要显示画面的设备上打开。输入房间码，全屏观看。</p>
+      <div class="go">进入大屏
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h13M12 5l7 7-7 7"/></svg>
+      </div>
+    </a>
+  </div>
+
+  <div class="foot">
+    双模式链路：<b>局域网 P2P 直连优先</b>，不通则自动降级 <b>服务器中转</b><br>
+    查看本机访问地址：<code id="hint">—</code>
+  </div>
+</div>
+
+<script src="/js/qrcode.js"></script>
+<script src="/js/core.js"></script>
+<script>
+  (function () {
+    document.getElementById('hint').textContent = `http://${location.host}/view`;
+  })();
+</script>
+</body>
+</html>

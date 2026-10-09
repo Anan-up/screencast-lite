@@ -1,0 +1,18 @@
+{
+  "name": "screencast-lite",
+  "version": "1.0.0",
+  "private": true,
+  "description": "极简投屏 - 网页间屏幕共享，局域网 P2P + 服务器中转双模式",
+  "main": "server/server.js",
+  "scripts": {
+    "start": "node server/server.js",
+    "test": "node test/run-all.js"
+  },
+  "engines": { "node": ">=16" },
+  "dependencies": {
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "puppeteer-core": "^21.0.0"
+  }
+}

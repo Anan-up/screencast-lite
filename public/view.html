@@ -1,0 +1,1365 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>接收端 · 极简投屏</title>
+<link rel="stylesheet" href="/style.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%2318181b'/><rect x='26' y='34' width='48' height='32' rx='5' fill='white'/><rect x='42' y='70' width='16' height='5' rx='2.5' fill='white'/></svg>">
+<style>
+  html, body { height: 100%; overflow: hidden; }
+
+  /* ================= 舞台 ================= */
+  .stage {
+    position: fixed; inset: 0;
+    background: #f7f7f8;
+    display: grid; place-items: center;
+    transition: background .5s var(--ease);
+  }
+  .stage.live { background: #0a0a0b; }
+  .stage.blackscreen { background: #000; }
+  .stage.blackscreen video { opacity: 0; }
+
+  video {
+    width: 100%; height: 100%;
+    object-fit: contain;
+    display: block;
+    background: transparent;
+    opacity: 0;
+    transition: opacity .45s var(--ease);
+  }
+  video.on { opacity: 1; }
+
+  /* ================= 待机 ================= */
+  .standby {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 32px;
+    text-align: center;
+    transition: opacity .35s var(--ease);
+  }
+  .standby.gone { opacity: 0; pointer-events: none; }
+
+  .sb-mark {
+    width: 62px; height: 62px;
+    border-radius: 18px;
+    background: var(--ink);
+    display: grid; place-items: center;
+    box-shadow: var(--sh);
+    margin-bottom: 26px;
+  }
+  .sb-title { font-size: 25px; letter-spacing: -.02em; margin-bottom: 9px; }
+  .sb-sub { font-size: 14px; color: var(--ink-3); margin-bottom: 34px; }
+
+  /* 房间码输入 */
+  .join {
+    display: flex; gap: 10px;
+    align-items: stretch;
+    width: 100%; max-width: 400px;
+  }
+  .code-input {
+    flex: 1;
+    height: 62px;
+    border: 1px solid var(--line-strong);
+    border-radius: var(--r-lg);
+    background: #fff;
+    text-align: center;
+    font-family: ui-monospace, monospace;
+    font-size: 27px;
+    font-weight: 600;
+    letter-spacing: .22em;
+    text-indent: .22em;
+    outline: none;
+    text-transform: uppercase;
+    box-shadow: var(--sh-sm);
+    transition: border-color .18s var(--ease), box-shadow .18s var(--ease);
+    min-width: 0;
+  }
+  .code-input::placeholder {
+    color: #d0d0d4;
+    letter-spacing: .22em;
+    font-weight: 500;
+  }
+  .code-input:focus {
+    border-color: var(--ink);
+    box-shadow: 0 0 0 4px rgba(0,0,0,.06), var(--sh-sm);
+  }
+  .code-input.shake { animation: shake .4s var(--ease); }
+  @keyframes shake {
+    0%, 100% { transform: translateX(0); }
+    20% { transform: translateX(-8px); }
+    40% { transform: translateX(7px); }
+    60% { transform: translateX(-4px); }
+    80% { transform: translateX(3px); }
+  }
+
+  .btn-join {
+    height: 62px;
+    padding: 0 26px;
+    border-radius: var(--r-lg);
+    font-size: 15px;
+    flex: none;
+  }
+
+  .join-hint {
+    margin-top: 18px;
+    font-size: 13px;
+    color: var(--ink-4);
+    min-height: 20px;
+    transition: color .2s var(--ease);
+  }
+  .join-hint.err { color: var(--err); }
+
+  .sb-foot {
+    position: absolute;
+    bottom: 28px; left: 0; right: 0;
+    text-align: center;
+    font-size: 12px;
+    color: var(--ink-4);
+    line-height: 1.9;
+  }
+  .sb-foot .kbd {
+    display: inline-flex; align-items: center;
+    height: 20px; padding: 0 6px;
+    border: 1px solid var(--line-strong);
+    border-bottom-width: 2px;
+    border-radius: 5px;
+    font-family: ui-monospace, monospace;
+    font-size: 11px;
+    color: var(--ink-2);
+    background: #fff;
+    margin: 0 2px;
+  }
+
+  /* ================= 悬浮控制条 ================= */
+  .hud {
+    position: fixed;
+    top: 20px; left: 50%;
+    transform: translate(-50%, -14px);
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 10px 8px 16px;
+    border-radius: 999px;
+    background: rgba(255,255,255,.94);
+    backdrop-filter: saturate(180%) blur(16px);
+    border: 1px solid rgba(0,0,0,.07);
+    box-shadow: 0 4px 20px -6px rgba(0,0,0,.22), 0 1px 3px rgba(0,0,0,.06);
+    font-size: 13px;
+    z-index: 100;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .3s var(--ease), transform .3s var(--ease);
+    max-width: calc(100vw - 32px);
+    white-space: nowrap;
+  }
+  .hud.show { opacity: 1; transform: translate(-50%, 0); pointer-events: auto; }
+
+  .hud .sep {
+    width: 1px; height: 20px;
+    background: rgba(0,0,0,.09);
+    flex: none;
+  }
+  .hud .info {
+    display: flex; align-items: center; gap: 7px;
+    color: var(--ink-2);
+  }
+  .hud .info .val { font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; }
+
+  .hud button {
+    width: 32px; height: 32px;
+    border: 0; background: transparent;
+    border-radius: 50%;
+    display: grid; place-items: center;
+    cursor: pointer;
+    color: var(--ink-2);
+    transition: background .16s var(--ease), color .16s var(--ease);
+    flex: none;
+  }
+  .hud button:hover { background: rgba(0,0,0,.06); color: var(--ink); }
+  .hud button.on { color: var(--ink); background: rgba(0,0,0,.07); }
+
+  /* ================= 状态胶囊（连接中/断开） ================= */
+  .banner {
+    position: fixed;
+    top: 24px; left: 50%;
+    transform: translate(-50%, -16px);
+    display: flex; align-items: center; gap: 9px;
+    padding: 9px 17px;
+    border-radius: 999px;
+    background: rgba(255,255,255,.96);
+    backdrop-filter: blur(14px);
+    border: 1px solid rgba(0,0,0,.07);
+    box-shadow: 0 4px 18px -6px rgba(0,0,0,.2);
+    font-size: 13px;
+    color: var(--ink-2);
+    z-index: 110;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .3s var(--ease), transform .3s var(--ease);
+  }
+  .banner.show { opacity: 1; transform: translate(-50%, 0); }
+
+  /* ================= 断开浮层 ================= */
+  .overlay {
+    position: fixed; inset: 0;
+    background: rgba(255,255,255,.97);
+    backdrop-filter: blur(6px);
+    display: grid; place-items: center;
+    z-index: 120;
+    text-align: center;
+    padding: 32px;
+  }
+  .overlay.gone { display: none; }
+  .ov-icon {
+    width: 56px; height: 56px;
+    border-radius: 50%;
+    border: 1.5px solid var(--line-strong);
+    display: grid; place-items: center;
+    margin: 0 auto 20px;
+    color: var(--ink-4);
+  }
+  .overlay h3 { font-size: 18px; margin-bottom: 8px; }
+  .overlay p { font-size: 13.5px; color: var(--ink-3); max-width: 380px; margin: 0 auto 24px; line-height: 1.75; }
+  .ov-actions { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+
+  /* 手机适配 */
+  @media (max-width: 560px) {
+    .sb-title { font-size: 21px; }
+    .join { flex-direction: column; }
+    .btn-join { width: 100%; }
+    .hud { font-size: 12px; padding-left: 12px; gap: 6px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ================= 画面 ================= -->
+<div class="stage" id="stage">
+  <video id="video" autoplay playsinline></video>
+
+  <!-- 待机 -->
+  <div class="standby" id="standby">
+    <div class="sb-mark">
+      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="2" y="4" width="20" height="13" rx="2.5"/>
+        <path d="M8 21h8M12 17v4"/>
+      </svg>
+    </div>
+    <h1 class="sb-title">等待投屏</h1>
+    <p class="sb-sub">输入发送端显示的 4 位房间码</p>
+
+    <div class="join">
+      <input class="code-input" id="codeInput" type="text" inputmode="text"
+             maxlength="6" autocomplete="off" autocapitalize="characters"
+             spellcheck="false" placeholder="————">
+      <button class="btn btn-primary btn-join" id="btnJoin">连接</button>
+    </div>
+    <div class="join-hint" id="joinHint">按 <span class="kbd">Enter</span> 快速连接</div>
+
+    <div class="sb-foot">
+      同一局域网内自动走 <b>P2P 直连</b>，跨网络自动降级为中转<br>
+      连接后按 <span class="kbd">F</span> 全屏 · <span class="kbd">B</span> 黑屏 · <span class="kbd">Esc</span> 退出
+    </div>
+  </div>
+</div>
+
+<!-- ================= 连接中 / 状态条 ================= -->
+<div class="banner" id="banner">
+  <span class="dot pulse" id="bannerDot"></span>
+  <span id="bannerText">正在连接…</span>
+</div>
+
+<!-- ================= 悬浮控制条 ================= -->
+<div class="hud" id="hud">
+  <div class="info">
+    <span class="dot live" id="hudDot"></span>
+    <span class="val mono" id="hudRes">—</span>
+  </div>
+  <div class="sep"></div>
+  <div class="info"><span class="val mono" id="hudFps">—</span></div>
+  <div class="sep"></div>
+  <div class="info"><span class="val mono" id="hudRtt">—</span></div>
+  <div class="sep"></div>
+  <div class="info">
+    <span class="tag" style="height:22px;padding:0 9px;font-size:11.5px;background:transparent;border-color:rgba(0,0,0,.09)" id="hudMode">直连</span>
+  </div>
+  <div class="sep"></div>
+  <button id="btnFull" title="全屏 (F)">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M16 21h3a2 2 0 0 0 2-2v-3M8 21H5a2 2 0 0 1-2-2v-3"/>
+    </svg>
+  </button>
+  <button id="btnBlack" title="黑屏保护 (B)">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 3a9 9 0 1 0 9 9 7 7 0 0 1-9-9z"/>
+    </svg>
+  </button>
+  <button id="btnFit" title="缩放模式 (S)">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="3" y="4" width="18" height="16" rx="2"/><path d="M8 9l3-3M16 15l-3 3"/>
+    </svg>
+  </button>
+  <button id="btnExit" title="断开连接">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/>
+    </svg>
+  </button>
+</div>
+
+<!-- ================= 断开浮层 ================= -->
+<div class="overlay gone" id="overlay">
+  <div>
+    <div class="ov-icon">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M18.36 6.64A9 9 0 1 1 5.64 6.64M12 2v8"/>
+      </svg>
+    </div>
+    <h3 id="ovTitle">投屏已结束</h3>
+    <p id="ovDesc">发送端已断开连接，或网络出现异常。</p>
+    <div class="ov-actions">
+      <button class="btn" id="btnReconnect">重新连接</button>
+      <button class="btn btn-ghost" id="btnBackHome">返回首页</button>
+    </div>
+  </div>
+</div>
+
+<script src="/js/qrcode.js"></script>
+<script src="/js/core.js"></script>
+<script src="/js/viewer.js"></script>
+<script>
+(function () {
+  'use strict';
+  const { $, createSignal, createViewerTransport, gradePath } = window.Cast;
+
+  const el = {
+    stage: $('#stage'), video: $('#video'), standby: $('#standby'),
+    codeInput: $('#codeInput'), btnJoin: $('#btnJoin'), joinHint: $('#joinHint'),
+    banner: $('#banner'), bannerDot: $('#bannerDot'), bannerText: $('#bannerText'),
+    hud: $('#hud'), hudDot: $('#hudDot'), hudRes: $('#hudRes'), hudFps: $('#hudFps'),
+    hudRtt: $('#hudRtt'), hudMode: $('#hudMode'),
+    btnFull: $('#btnFull'), btnBlack: $('#btnBlack'), btnFit: $('#btnFit'), btnExit: $('#btnExit'),
+    overlay: $('#overlay'), ovTitle: $('#ovTitle'), ovDesc: $('#ovDesc'),
+    btnReconnect: $('#btnReconnect'), btnBackHome: $('#btnBackHome'),
+  };
+
+  // ---------------- 状态 ----------------
+  let signal = null;
+  let vx = null;
+  let roomCode = null;
+  let joined = false;
+  // 活会话被信令断连切断过（服务器重启/断网）。close 置位、open 消费：
+  // 重连后的重新 join 属于"重建"语义，join-failed 要走退避链而非硬报错。
+  // 首次连接（submitJoin 预置 roomCode）不置位 —— 手滑输错码必须立刻报错。
+  let sessionSevered = false;
+  let fitMode = 'contain';   // contain | cover
+  let blackout = false;
+  let hudTimer = null;
+  let statTimer = null;
+  let liveSince = 0;
+  let reconnectAttempts = 0;
+  let autoRetryTimer = null;
+  let autoWaiting = false;   // 处于"等待发送端开播"的自动重连窗口
+  let autoDeadline = 0;
+
+  const MODES = ['contain', 'cover'];
+
+  function log(...a) { console.log('[接收端]', ...a); }
+
+  // ---------------- URL 预填房间码 ----------------
+  function readCodeFromUrl() {
+    const p = new URLSearchParams(location.search);
+    return (p.get('r') || p.get('code') || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6);
+  }
+
+  // ---------------- 信令 ----------------
+  function initSignal() {
+    signal = createSignal();
+    vx = createViewerTransport(signal);
+    vx.attachVideo(el.video);
+    // 调试把手：仅在 ?debug=1 时暴露，供自动化测试读取内部状态
+    if (new URLSearchParams(location.search).has('debug')) {
+      // 必须用 getter 而不是 `window.__vx = vx` 一次赋值：
+      // vx 在运行期会被**整体替换**（relay-begin 与 onHostGone 都会重建），
+      // 一次性赋值会让测试永远盯着已销毁的旧实例，读到过期的 mode/pc
+      // ——正是"测了个寂寞"的典型陷阱（断言照样通过，测的却是死对象）。
+      Object.defineProperty(window, '__vx', {
+        configurable: true,
+        get() { return vx; },
+      });
+      // 信令实例。与 cast.html 的同名把手对称（那边一直都有，这边此前漏了）。
+      // 自动化用例需要它做两件事：等 OPEN（scheduleRejoin 的第一道守卫就是
+      // `signal.state !== 1` → return，不确保 OPEN 会得到"什么都没发生"的
+      // 假通过），以及读取 rtt。同样用 getter —— signal 在重连时会换实例。
+      Object.defineProperty(window, '__signal', {
+        configurable: true,
+        get() { return signal; },
+      });
+      // 会话加入态。getter 而非一次性赋值：close/open/join-failed/
+      // room-closed/leave 都会翻转它，快照会立刻过期（P2.5 用例的核心
+      // 断言就是"服务器重启后它必须被 close 清位、再被重新 join 置回"）。
+      Object.defineProperty(window, '__joined', {
+        configurable: true,
+        get() { return joined; },
+      });
+      // doJoin 出站时间戳数组：断言"join-failed → 退避重试"链路的速率。
+      // 与 cast.html 的 __sent 对称（那边用 sendSig 包装，这边只有一个
+      // 出站点 doJoin，直接在发送点记录更省）。
+      joinLog = [];
+      window.__joinLog = joinLog;
+      // 测试钩子：暴露重建相关的内部函数与冷启动复位。
+      // 之所以需要复位 lastVideoAt，是因为要在单进程里复现
+      // "isPictureAlive 从未被调用过"这个冷启动前提——端到端很难构造，
+      // 主机重载必然让大屏 pc 先进入 failed 从而建立基准。
+      window.__rejoin = {
+        schedule: (t0, force) => {          lastVideoTime = t0;
+          lastVideoAt = 0;         // 模拟基准不存在
+          scheduleRejoin(force);
+        },
+        reset: () => resetRejoin(),
+        /**
+         * 直接触发 onHostGone（断开/房间关闭的收尾）。
+         *
+         * 存在的意义：onHostGone 是一条**独立可达**的入口 —— room-closed、
+         * host-away 超时、leave() 都会走到它，但前两条**不经过** leave()。
+         * 若只测 leave()，那么"onHostGone 自己是否清了 rejoinTimer"
+         * 这一点就没被覆盖（leave 里那道 resetRejoin 会替它兜住，
+         * 断言照样通过，却测不到 onHostGone 的独立路径）。
+         */
+        hostGone: (reason) => onHostGone(reason || '测试触发'),
+        alive: () => isPictureAlive(),
+        fresh: () => pictureVerdictFresh(),
+        /**
+         * 把基准改成"画面停滞"状态，让下一次 isPictureAlive() 判定为 false。
+         *
+         * `moving = (now - lastVideoAt < PICTURE_FRESH_WINDOW_MS)
+         *           && (t > lastVideoTime + PICTURE_ADVANCE_EPS)`
+         * 要得到 false，必须让**两个条件都成立为假**，否则测试只是"碰巧"通过：
+         *   - `lastVideoTime` 设为**当前** currentTime（而非一个离谱负值）：
+         *     偏离会让推进条件恒真，实际只剩时间条件在生效，
+         *     一旦将来有人收紧 PICTURE_FRESH_WINDOW_MS / PICTURE_BASELINE_MAX_MS，
+         *     moving 就可能翻成 true，测试会**静默失效**却仍然报绿。
+         *   - `lastVideoAt` 推到 s 秒前：既越过 freshness 阈值（要 > 6s 才算旧），
+         *     又不超过 PICTURE_BASELINE_MAX_MS（否则会被归入"无基准"分支返回 true，
+         *     反而走不到重建）。上限 25 / 下限 7 正是为了让 s 落在这个窗口内。
+         */
+        forceStale: (secondsAgo) => {
+          const s = Math.min(25, Math.max(7, secondsAgo || 10));
+          const cur = el.video ? el.video.currentTime : 0;
+          lastVideoTime = cur;               // 与当前相等 → 未推进
+          lastVideoAt = Date.now() - s * 1000;
+        },
+        probe: () => ({
+          lastVideoTime,
+          lastVideoAt,
+          rejoinAttempts,
+          rejoinChecks,
+          rejoinInFlight,
+          // 是否挂着待触发的重建定时器。
+          // 必须暴露：`rejoinInFlight` 在撤销/重建分支里会被提前置回 false，
+          // 单看它无法区分"完全没有待办"与"有定时器但标记已复位"。
+          // host-return 抢占挂起定时器的用例（force 覆盖）与 leave/onHostGone
+          // 清零的用例，断言的核心就是这个布尔量。
+          timerPending: rejoinTimer !== null,
+        }),
+        /**
+         * 逐条暴露"停滞判定"的两个子条件，供测试独立断言。
+         *
+         * 存在的意义：只断言最终的 `isPictureAlive() === false` 是不够的 ——
+         * 任一子条件单独为假都能让结果变 false，测试可能"碰巧"通过而
+         * 掩盖另一个条件其实根本没生效。把两个条件分别暴露出来，
+         * 测试就能验证**两者同时为假**，与 moving 的定义严格对应。
+         */
+        staleConditions: () => {
+          const v = el.video;
+          const t = v ? v.currentTime : 0;
+          const now = Date.now();
+          return {
+            withinWindow: now - lastVideoAt < PICTURE_FRESH_WINDOW_MS,   // 时间条件（应为 false）
+            advanced: t > lastVideoTime + PICTURE_ADVANCE_EPS,            // 推进条件（应为 false）
+            hasBaseline: lastVideoAt !== 0 && now - lastVideoAt <= PICTURE_BASELINE_MAX_MS, // 应为 true
+          };
+        },
+        /**
+         * 反例构造：把 lastVideoTime 推到离谱负值（旧 forceStale 的写法）。
+         *
+         * 用于**证明**那个条件当时是个摆设：偏离后 `advanced` 恒为 true，
+         * 停滞判定就只剩时间条件在起作用。若只用"isPictureAlive() === false"
+         * 做断言，这种退化根本无法被发现。
+         */
+        forceStaleDrift: () => {
+          lastVideoTime = -1e9;
+        },
+      };
+    }
+
+    signal.on('open', () => {
+      log('信令已连接');
+      // 先消费"会话曾被切断"标记：无论下面走哪条分支，它都不能残留
+      // （残留会让下一次 open 误判成重建，比如用户随后手动输入了新码）。
+      const severed = sessionSevered;
+      sessionSevered = false;
+      if (!roomCode) return;
+      if (severed) {
+        // 活会话曾被信令断连切断（服务器重启/断网恢复）。旧传输层必然
+        // 已死：服务端在观看端 ws 关闭的瞬间就把它逐出房间并通知主机
+        // removeViewer（关闭 pc）；主机自己断线时也会清空全部 peers。
+        // 无论哪种，对端 pc 都已被关闭 —— 这里走统一 teardownTransport()
+        // 主动清旧传输层并重建（与 relay-begin / onHostGone 完全一致）：
+        //   1. 立刻释放死资源，不必等 ICE 数十秒才判定 failed；
+        //   2. destroy 会把 mode 复位为 'connecting'，否则残留的
+        //      'relay'/'relay-blob' 会让退避链"决策 1"把重 join 误判成
+        //      "已处于中继"而撤销，自愈链断裂。
+        teardownTransport();
+        // 重建语义：这次 join 若失败（服务器重启后主机需要几秒才能
+        // 重连并把房间建回来），join-failed 处理器要据此走退避重试，
+        // 而不是 showJoinError 一次性放弃。
+        rejoinInFlight = true;
+      }
+      doJoin(roomCode, true);
+    });
+
+    signal.on('close', () => {
+      if (joined) {
+        showBanner('warn', '连接中断，正在重连…');
+        // P2.5 修复核心：活会话被切断时必须清 joined。否则重连成功后
+        // open 处理器的 `!joined` 守卫会永远挡住重新 join —— 服务器重启
+        // 后的新实例没有旧房间状态，room-closed 永远不会补发，大屏就此
+        // 成为新服务器上的"幽灵"：收不到任何 offer / relay-begin /
+        // room-closed，横幅永远停在"连接中断"。
+        // （信令层对意外断开会按退避自动重连，'joined' 事件会把 joined
+        //   设回 true，因此清位不影响正常重连的语义。）
+        joined = false;
+        sessionSevered = true;
+      }
+    });
+
+    signal.on('reconnecting', ({ attempt }) => {
+      // sessionSevered：断线期间 joined 已被 close 清位，
+      // 但"重连中（第 N 次）"的进度文案仍应持续更新。
+      if (joined || sessionSevered) showBanner('warn', `重连中（第 ${attempt} 次）`);
+    });
+
+    signal.on('joined', (m) => {
+      joined = true;
+      reconnectAttempts = 0;
+      stopAutoWait();
+      hideOverlay();
+      showBanner('live', '已连接，等待画面…');
+      log('已加入房间', m.code);
+      if (m.turn) vx.setTurn(m.turn);
+      resetRejoin();   // 入房成功，重建退避归零
+    });
+
+    signal.on('join-failed', (m) => {
+      joined = false;
+      // 自动重连窗口内静默重试；否则才是真正的失败
+      if (autoWaiting) {
+        log('房间暂不可用，继续等待', m.reason);
+        setJoinHint('等待发送端开播…');
+        return;
+      }
+      // 正处于"断线后主动重建"流程时，主机可能还没重连上来。
+      // 真实可达场景：host-away 优雅窗口内，服务端 room.host 仍是已断开的
+      // 旧 ws（readyState !== OPEN），此时大屏因 pc failed 触发重建、发出
+      // join，必收到 join-failed '主机尚未开始投屏'。
+      // （host-return 不可能触发本分支：服务端只在 room.host === ws 时才
+      //   转发 host-return，即那一刻房间必然已就绪，join 会成功。）
+      // 这种情况必须继续退避重试，否则一次 join-failed 就永久放弃。
+      if (rejoinInFlight) {
+        log('重建中，主机尚未就绪，稍后重试', m.reason);
+        showBanner('warn', '发送端正在恢复…');
+        // ⚠️ 必须走退避路径（force=false），绝不能 scheduleRejoin(true)：
+        // force 路径 delay=0，join-failed 一回来下一 tick 就立即再 join，
+        // 形成 "join-failed → 立即 join → join-failed → …" 的无限快速重试，
+        // 唯一节流只剩网络 RTT —— 局域网下每秒数百次 join，主机重载的
+        // 几秒内能打出上千次；且 force 不消耗 rejoinAttempts、不进
+        // REJOIN_MAX 限流，没有任何刹车。
+        // force=false 走 1200ms 起的退避并计入 REJOIN_MAX（12 次封顶后
+        // onHostGone 兜底），速率与总量双双有界；其决策链里的"中继模式
+        // 撤销"分支也正是想要的语义（中继模式下不该重走 P2P）。
+        //
+        // 不要在这里先 `rejoinInFlight = false`：scheduleRejoin(false)
+        // 成功排程时会自己把它置回 true；若因已有挂起定时器而早退，
+        // 残留的 true 恰好让下一条 join-failed 继续走本分支 ——
+        // 这正是维持退避链不断裂所需的。贸然清零会让后续 join-failed
+        // 跌进下面的 showJoinError 分支，重试链彻底死掉。
+        scheduleRejoin(false);
+        return;
+      }
+      showJoinError(m.reason || '房间不存在');
+      log('加入失败', m.reason);
+    });
+
+    signal.on('offer', (m) => vx.onOffer(m.sdp, m.viewerId, m.seq));
+    signal.on('ice', (m) => vx.onIce(m.candidate));
+
+    // 中继开始：主机判定直连不可用，改由服务端转发 WebM 分片
+    signal.on('relay-begin', (m) => {
+      showBanner('warn', '直连不可用，已切换到服务器中转');
+      teardownTransport();
+      vx.startRelayPlayback(m.mime);
+      log('已切换到中继播放', m.mime);
+    });
+
+    // 主机侧无法启动中继（如浏览器不支持 MediaRecorder）
+    signal.on('relay-failed', (m) => {
+      log('中继启动失败', m.reason);
+      showBanner('warn', '直连不可用且中转启动失败，请刷新页面重试');
+      el.hudMode.textContent = '链路异常';
+    });
+
+    // 注：这里**没有** `relay-mime` handler。
+    // 曾经有一条 `signal.on('relay-mime', (m) => vx.startRelayPlayback(m.mime))`，
+    // 但它在当前协议下**永远不可能被触发**：
+    //   - server.js 的转发白名单（offer/answer/ice/relay-begin/relay-failed）
+    //     不包含 relay-mime，服务端不会转发；
+    //   - host.js 只在 relay-begin 里带 mime 字段，从不单独发 relay-mime。
+    // 保留它只会让读者以为存在"两条独立的中继启动消息"这一协议形态。
+    // mime 的传递统一走 relay-begin（见上）。
+
+    // 主机临时离线（信令抖动）：这是**可恢复**状态，不要走 onHostGone。
+    // onHostGone 会清空画面、把标题改成"投屏已结束"、并启动 5 分钟 autoWait，
+    // 一旦主机几秒后重连并复用同一房间码，大屏就会经历"结束→又活了"的跳变。
+    //
+    // 服务端配合做了协议层保证：收到 host-away 后不会立即 destroyRoom，
+    // 而是在 HOST_AWAY_GRACE_MS(15s) 内保留房间。所以这里的 banner 不会被
+    // 紧随其后的 room-closed 浮层(z-index 120)盖掉——15 秒内根本不会来
+    // room-closed；真来了说明确实超时，走 onHostGone 是正确语义。
+    signal.on('host-away', () => {
+      if (!joined) return;
+      // 不传 autoHide：让提示常驻，直到 host-return 或 room-closed 来改变它。
+      // 若这里给个 1.6s 自动隐藏，15 秒等待期间屏幕上看不出任何异常，反而更糟。
+      showBanner('warn', '发送端连接波动，正在恢复…');
+      log('主机临时离线，进入优雅等待窗口');
+    });
+
+    // 主机在窗口内重连成功 → 撤掉警告态，恢复"投屏中"并自动淡出。
+    // 画面与连接在窗口期从未中断（房间没销毁、大屏的 ws 也没断），
+    // 所以这里只需要收拾提示，不必碰播放状态。
+    signal.on('host-return', () => {
+      if (!joined) return;
+      showBanner('live', '发送端已恢复', 2000);
+      log('主机已回归，恢复正常');
+      // 房间没销毁 ≠ 连接还活着。主机重载后旧 PeerConnection 已经废了，
+      // 而且它的 failed 事件多半不会及时冒出来（旧 pc 的 connectionState
+      // 可能一直停在 connected，对端消失后 ICE 要数十秒才判定失败）。
+      //
+      // host-return 是主机**明确**发出的强信号（它刚 create(reused) 过），
+      // 所以无条件重建，不做任何健康判定——尤其不能调 isPictureAlive()，
+      // 它首次调用会建立基准并乐观返回 true，正好跳过重建导致画面永冻。
+      resetRejoin();
+      scheduleRejoin(true);
+      log('检测到主机回归，强制重建连接');
+    });
+
+    signal.on('room-closed', (m) => {
+      joined = false;
+      onHostGone(m.reason || '发送端已停止投屏');
+    });
+
+    signal.on('pong', () => {});
+
+    bindTransport();
+
+    // 二进制中继数据
+    //
+    // ⚠️ 这里只在 initSignal 注册**一次**，而 vx 在运行期会被整体替换
+    // （relay-begin / onHostGone 都会重建）。之所以仍然正确，是因为回调体
+    // 引用的是**闭包变量 vx**，调用时才求值 —— 替换后自动指向新实例。
+    // 这依赖 `let vx` 这一事实：若有人把声明改成 `const vx`（或在此处
+    // 捕获 `vx` 的当前值，如 `const cur = vx`），中继二进制帧会被**静默切断**
+    // —— 大屏画面直接黑/卡，且没有任何报错。改动此处请一并检查 vx 的声明方式。
+    signal.on('binary', (buf) => vx.onRelayChunk(buf));
+  }
+
+  /** 绑定传输层事件（中继切换后需重新绑定） */
+  function bindTransport() {
+    vx.on('track', (stream) => {
+      // 已有中继播放时优先中继，忽略迟到的 P2P 轨道
+      if (vx.mode === 'relay' || vx.mode === 'relay-blob') return;
+      el.video.srcObject = stream;
+      el.video.classList.add('on');
+      el.video.play().catch(() => {
+        showBanner('warn', '浏览器拦截了自动播放，请点一下画面');
+      });
+      goLive();
+    });
+
+    vx.on('connected', ({ mode }) => {
+      const g = gradePath(mode);
+      el.hudMode.textContent = g.label;
+      goLive();
+      log('已连通', mode);
+    });
+
+    vx.on('state', (s) => {
+      log('连接状态', s);
+      if (s === 'failed') {
+        showBanner('warn', '直连中断，正在重连…');
+        scheduleRejoin(false);   // 无明确信号，走画面推进二次确认
+      }
+    });
+
+    vx.on('relay-mode', ({ mode, degraded }) => {
+      el.hudMode.textContent = degraded ? '中转·兼容' : '服务器中转';
+      goLive();
+      log('中继播放已就绪', mode, degraded ? '(降级兼容模式)' : '');
+    });
+
+    vx.on('relay-error', (e) => {
+      showBanner('warn', '中转播放初始化失败');
+      log('中继播放错误', e && e.message);
+    });
+
+    vx.on('failed', () => showBanner('warn', '连接质量下降'));
+  }
+
+  function goLive() {
+    if (!liveSince) liveSince = Date.now();
+    el.standby.classList.add('gone');
+    el.stage.classList.add('live');
+    showBanner('live', '投屏中', 1600);
+    startStats();
+  }
+
+  function doJoin(code, silent) {
+    roomCode = code;
+    // 出站计数（仅 debug 模式）：回归测试据此断言 join-failed 链路
+    // 的退避速率，signal.send 是 defineProperties 写的（configurable=false）
+    // 无法外包，只能在发送点直接记录。
+    if (joinLog) joinLog.push(Date.now());
+    signal.send({ type: 'join', code });
+    if (!silent) showBanner('', '正在连接 ' + code + '…');
+  }
+
+  // ---------------- 加入流程 ----------------
+  function submitJoin() {
+    const raw = el.codeInput.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+    if (raw.length < 4) {
+      showJoinError('请输入完整的房间码');
+      el.codeInput.classList.add('shake');
+      setTimeout(() => el.codeInput.classList.remove('shake'), 420);
+      return;
+    }
+    stopAutoWait();          // 用户手动介入，取消自动等待
+    resetRejoin();           // 清掉旧房间可能挂起的退避定时器：
+                           // 它到点会 doJoin(roomCode)，虽然读的是最新闭包值
+                           // （碰巧 join 新码），但依赖隐式事实，显式清零更稳
+    hideOverlay();
+    el.btnJoin.disabled = true;
+    el.btnJoin.textContent = '连接中';
+    setJoinHint('正在连接…');
+    if (!signal) initSignal();
+    if (signal.state === 1) doJoin(raw);
+    else {
+      roomCode = raw;
+      setJoinHint('等待服务连接…');
+    }
+    // 超时兜底
+    setTimeout(() => {
+      if (!joined) {
+        el.btnJoin.disabled = false;
+        el.btnJoin.textContent = '连接';
+      }
+    }, 6000);
+  }
+
+  function showJoinError(msg) {
+    el.btnJoin.disabled = false;
+    el.btnJoin.textContent = '连接';
+    setJoinHint(msg, true);
+    el.codeInput.classList.add('shake');
+    setTimeout(() => el.codeInput.classList.remove('shake'), 420);
+    el.codeInput.select();
+  }
+
+  function setJoinHint(msg, isErr) {
+    el.joinHint.textContent = msg;
+    el.joinHint.classList.toggle('err', !!isErr);
+  }
+
+  // ---------------- 横幅 ----------------
+  let bannerTimer = null;
+  function showBanner(tone, text, autoHide) {
+    el.bannerDot.className = 'dot ' + (tone || '') + (tone === 'live' ? '' : ' pulse');
+    el.bannerText.textContent = text;
+    el.banner.classList.add('show');
+    clearTimeout(bannerTimer);
+    if (autoHide) bannerTimer = setTimeout(() => el.banner.classList.remove('show'), autoHide);
+  }
+  function hideBanner() { el.banner.classList.remove('show'); }
+
+  // ---------------- 断线后主动重建 ----------------
+  /**
+   * P2P 连接进入 failed 后主动重新 join。
+   *
+   * 为什么必须有这个：主机侧优雅重连（hostAway）刻意让房间**不销毁**，
+   * 于是大屏再也收不到 room-closed —— 而 room-closed 原本是大屏唯一的
+   * 恢复入口（onHostGone → autoWait → 重新 join）。
+   * 房间保住了，恢复路径却断了，结果就是画面永久冻结在最后一帧。
+   * 这里补上"连接层自己负责重建"这条路，不再依赖房间级事件。
+   *
+   * 退避策略：首次 1.2s，之后线性增长到 8s 封顶，避免主机没回来时打爆信令。
+   */
+  let rejoinTimer = null;
+  // 挂起定时器的来源：只有 !force 分支在创建定时器前执行过 rejoinAttempts++，
+  // force 抢占时**只能**回退那一类定时器留下的 ++，否则会多减（见下）。
+  let rejoinTimerFromForce = false;
+  let rejoinAttempts = 0;
+  let rejoinInFlight = false;   // 处于"断线后主动重建"流程
+  let rejoinChecks = 0;         // "看过一眼但撤销"的连续次数（独立限流，见下）
+  // doJoin 出站时间戳（仅 debug 模式挂载），见 doJoin 内注释。
+  let joinLog = null;
+  /**
+   * 真正执行重建的次数上限。
+   *
+   * 只统计**实际发起重建**的次数，不统计"判定后撤销"。两者语义不同：
+   * 撤销是零成本的本地判断，重建才会扰动主机侧 peer/relay 状态。
+   * 混用同一个计数器会让"反复判定健康"把预算耗光、提前 onHostGone。
+   */
+  const REJOIN_MAX = 12;        // 最多 12 轮（约 1 分钟），避免无限重试
+  /**
+   * 连续"判定为健康并撤销"的上限，用于防误判死循环。
+   *
+   * 撤销后我们会重新排程（否则 failed 不会再触发、重建永不发生），
+   * 于是存在一种病态可能：画面推进检测持续误报"健康"（例如在播本地
+   * 缓存帧），导致无限空转。到达此上限即改为强制重建一次，
+   * 把最终裁决权交给 P2P 协商结果。
+   */
+  const REJOIN_CHECKS_MAX = 20;
+  // ---- 画面推进判定的阈值（**唯一真源**）----
+  //
+  // 这三个值同时被 isPictureAlive()（判定）和 staleConditions()（测试钩子）
+  // 使用。提成常量是为了消除"两处镜像实现"：若把它们各自硬编码，
+  // 改了一处忘了另一处不会报任何错，测试会静默地对着旧阈值断言、假绿。
+  const PICTURE_BASELINE_MAX_MS = 30000;  // 距上次采样超过此值 → 归为"无基准"，乐观返回 true
+  const PICTURE_FRESH_WINDOW_MS = 6000;   // 超过此值视为"旧采样"，不参与"是否推进"判定
+  const PICTURE_ADVANCE_EPS = 0.05;       // currentTime 至少前进这么多秒才算"在推进"
+  /**
+   * 画面是否真的在推进。
+   *
+   * 不能用 vx.mode / pc.connectionState 判断：主机重载后旧连接的状态
+   * 会长时间停在 connected（ICE 判定失败要数十秒），此时 mode 是
+   * 'p2p-host' 看着一切正常，但视频早已定格。
+   * 唯一可信的依据是 video.currentTime 是否还在往前走。
+   *
+   * 只在"主机回归"这一时机使用，**不做周期性检测**：
+   * 主机侧另有一个看门狗负责"P2P 静默失效 → 降级中继"（15 秒），
+   * 若大屏也按画面静止周期性地重建 P2P，两者会互相打架 ——
+   * 画面一停大屏就重连、重连后 P2P 又通，主机侧永远等不到降级时机。
+   * 因此分工是：主机消失 → 大屏重建；链路静默劣化 → 主机降级中继。
+   */
+  let lastVideoTime = -1;
+  let lastVideoAt = 0;
+  /**
+   * 上一次 isPictureAlive() 的 true 是"无从判断"还是"确认健康"。
+   *
+   * 由 isPictureAlive() **唯一维护**。不能用 `Date.now() - lastVideoAt < 50`
+   * 之类的间接推断——它在 isPictureAlive() 之后立即调用时，lastVideoAt
+   * 刚被更新，差值必然极小，会恒为 true。
+   *
+   * 声明必须放在 isPictureAlive 之前：`let` 不像 `function` 声明那样提升，
+   * 若将来有人在 IIFE 执行过程中同步调用 isPictureAlive()，
+   * 声明在后会直接抛 TDZ ReferenceError。
+   */
+  let lastProbeWasFresh = false;
+  /**
+   * 只回答一个问题：**P2P 画面是否在推进**。
+   *
+   * 不要在这里过滤"中继模式""无 vx"等场景然后返回 false —— 那会污染语义：
+   * 本函数返回 false 意味着"画面死了"，而中继模式下画面活得好好的
+   * （只是数据源不是 WebRTC）。返回 false 等于撒谎，调用方会据此
+   * 把主机刚建好的 relay 链路推翻、重走一遍注定失败的 P2P。
+   * 这类"要不要走重建"的前置判断由 scheduleRejoin() 负责。
+   *
+   * 返回值语义（调用方必须区分）：
+   *   - `false`           画面确认已死，或压根没有可判定的 P2P 画面
+   *   - `true` + fresh    无法判定（无基准），保守视为"先别判死"
+   *   - `true` + !fresh   确认画面在推进
+   */
+  function isPictureAlive() {
+    const v = el.video;
+    if (!v || !v.srcObject || v.readyState < 2) return false;
+    const now = Date.now();
+    const t = v.currentTime;
+    // 首次采样（或距上次采样过久）没有基准，无法判断是否推进。
+    //
+    // 这里返回 true（乐观）的代价必须说清楚：调用方拿到 true 时应当
+    // **撤销本次动作并重新排程**，而不是直接跳过重建流程——`failed`
+    // 事件只会因状态**变化**触发一次，撤销后若不再排程，重建就永远不会发生
+    // （画面冻结到用户手动刷新为止）。见 scheduleRejoin()。
+    if (lastVideoAt === 0 || now - lastVideoAt > PICTURE_BASELINE_MAX_MS) {
+      lastVideoTime = t;
+      lastVideoAt = now;
+      lastProbeWasFresh = true;
+      return true;
+    }
+    lastProbeWasFresh = false;
+    const moving = now - lastVideoAt < PICTURE_FRESH_WINDOW_MS
+                && t > lastVideoTime + PICTURE_ADVANCE_EPS;
+    lastVideoTime = t;
+    lastVideoAt = now;
+    return moving;
+  }
+
+  /** 上一次 isPictureAlive() 的 true 是"无从判断"还是"确认健康"。 */
+  function pictureVerdictFresh() {
+    return lastProbeWasFresh;
+  }
+
+  /**
+   * @param {boolean} force  强制重建，跳过任何健康判定。
+   *
+   * 两条调用路径的信号强度完全不同，必须区别对待：
+   *
+   *  - force=true（host-return）：主机**明确**告诉我们它刚重载过。
+   *    这是强信号，旧 pc 一定已废——主机那端 pc.close() 都执行了。
+   *    不需要、也不能用画面是否推进来判断（见下）。
+   *
+   *  - force=false（connectionState → failed）：没有明确信号，
+   *    可能只是瞬时抖动，用 isPictureAlive() 二次确认再重建。
+   */
+  function scheduleRejoin(force) {
+    // ⚠️ 已有挂起的重试时，**force 必须能覆盖它**。
+    //
+    // 早期写法是 `if (rejoinTimer) return;` 无差别早退，这会把 host-return
+    // 这个强信号直接吞掉：connectionState→failed 先排了一次退避重试
+    // （delay 最多 8 秒），此时主机明确宣告"我重载过了"（host-return），
+    // scheduleRejoin(true) 却因挂着定时器而早退。最坏情况是那次挂起的
+    // force=false 判定为"已切中继"或"画面还活着"→ 撤销且不重建，
+    // 而 host-return 又已被丢弃 → 再也没有触发源，画面永久冻结。
+    //
+    // 正确语义：force 是强信号，它看到的"旧 pc 已废"是确定的，应当抢占。
+    if (rejoinTimer) {
+      if (!force) return;
+      clearTimeout(rejoinTimer);       // 丢弃那次基于猜测的退避重试
+      rejoinTimer = null;
+      // 挂起的那次若是 !force 分支创建的，它执行过 rejoinAttempts++，
+      // 这里减回去，避免一次被抢占的退避在配额上留下痕迹。
+      // 但 force 分支创建定时器时**没有** ++，若无差别 --，同一 tick 内
+      // 连续两次 force（如 host-return 与 join-failed 撞车）会把计数
+      // 多减一次，悄悄把配额让渡给后续无关的重建，REJOIN_MAX 限流失效。
+      if (!rejoinTimerFromForce) {
+        rejoinAttempts = Math.max(0, rejoinAttempts - 1);
+      }
+      rejoinTimerFromForce = false;
+      rejoinInFlight = false;
+    }
+    if (!roomCode || !signal || signal.state !== 1) return;
+    // 强制路径（host-return）不计入 REJOIN_MAX：它的 delay=0，若也计数，
+    // 主机还在重载时 12 次几乎瞬时打满，会提前 onHostGone 把大屏踢回待机。
+    // 它的限流由 join-failed → 退避重试 这条链自己负责（每次至少 1s 往返）。
+    if (!force && rejoinAttempts >= REJOIN_MAX) {
+      log('重建连接已达上限，放弃');
+      rejoinInFlight = false;
+      onHostGone('发送端长时间未恢复');
+      return;
+    }
+    rejoinInFlight = true;
+    const delay = force ? 0 : Math.min(8000, 1200 + rejoinAttempts * 1200);
+    if (!force) rejoinAttempts++;
+    rejoinTimerFromForce = force;      // 记录来源，供抢占时决定是否回退计数
+    rejoinTimer = setTimeout(() => {
+      rejoinTimer = null;
+      rejoinTimerFromForce = false;
+      if (!force) {
+        // ---- 决策 1：已处于中继模式 → 尊重主机决策，绝不重建 P2P ----
+        //
+        // 切中继是主机 side 的主动决定（pc failed → enableRelay → relay-begin）。
+        // 此时大屏若重走 P2P，会让主机 removeViewer → relayViewers 清空
+        // → sharedRecorder.stop()，把刚建好的中继链路亲手拆掉；然后新 pc
+        // 大概率又失败、又切中继、又发 relay-begin —— 双方进入
+        // "切中继 → 大屏重建 P2P → 又失败 → 又切中继"的震荡。
+        // 用户看到的是画面每隔几十秒中断一次。
+        //
+        // 时间窗很关键：pc failed 与大屏收到 relay-begin 几乎同时发生，
+        // 而这里延迟 ≥1200ms，所以正常情况下回调执行时 mode 已是 'relay'。
+        if (vx.mode === 'relay' || vx.mode === 'relay-blob') {
+          rejoinAttempts = Math.max(0, rejoinAttempts - 1);
+          rejoinInFlight = false;
+          log('已处于中继模式，撤销 P2P 重建（尊重主机决策）');
+          return;
+        }
+
+        // ---- 决策 2：P2P 画面是否还在推进 ----
+        // 不能用 "mode 看起来是 p2p" 判断：主机重载后旧 pc 的
+        // connectionState 会长时间停在 connected（ICE 要数十秒才判定失败），
+        // vx.mode 一直是 'p2p-host'，但 video.currentTime 早已不动。
+        //
+        // isPictureAlive() 返回 true 有两种含义，但**两种都不能直接放弃**：
+        //   a) 有基准且 currentTime 增长 → 确实健康，等下一轮再看
+        //   b) 首次采样无基准 → 乐观值，本轮判定无意义
+        // 所以统一"撤销本次尝试 + 重新排程"。
+        //
+        // 重新排程是必须的：`failed` 事件只会在 connectionState **变化**时
+        // 触发一次，撤销后若不再排程，就再也没有第二个触发源
+        // （host-return 要主机重连、join-failed 要先发起 join），
+        // 画面会永久冻结到用户手动刷新为止。
+        // 下一轮采样已有基准，若画面真死则返回 false → 正常重建。
+        //
+        // 递归安全：这里减回 rejoinAttempts 后又调用 scheduleRejoin，
+        // 但 rejoinTimer 已置 null 且 delay ≥1200ms，是异步排程而非立即递归，
+        // 不会栈溢出。限流由 REJOIN_CHECKS_MAX 独立负责（见下）。
+        const alive = isPictureAlive();
+        if (alive) {
+          rejoinAttempts = Math.max(0, rejoinAttempts - 1);
+          rejoinInFlight = false;
+          rejoinChecks++;
+          if (rejoinChecks >= REJOIN_CHECKS_MAX) {
+            // 连续多次判定"还活着"却没等到任何明确信号，说明这台大屏
+            // 的画面推进检测不可信（例如在播本地缓存帧）。与其无限空转，
+            // 不如强制重建一次，把决定权交给 P2P 协商结果。
+            log('连续撤销达上限，改为强制重建');
+            rejoinChecks = 0;
+            scheduleRejoin(true);
+            return;
+          }
+          log(pictureVerdictFresh()
+            ? '暂无画面基准，撤销本次重建尝试（已重新排程）'
+            : '画面仍在推进，撤销本次重建尝试（已重新排程）');
+          scheduleRejoin(false);
+          return;
+        }
+      }
+      log('主动重建连接', force ? '(强制)' : '第 ' + rejoinAttempts + ' 次 (抖动确认)');
+      // 重新入房：主机侧会重新 addViewer 并发起 offer。
+      // 先 destroy 掉旧的 pc，避免新旧两条连接并存互相干扰。
+      try { vx.destroy(); } catch {}
+      doJoin(roomCode, true);
+      // 若仍不成功，onconnectionstatechange 会再次触发 failed → 再来一轮
+    }, delay);
+  }
+  function resetRejoin() {
+    clearTimeout(rejoinTimer);
+    rejoinTimer = null;
+    rejoinTimerFromForce = false;
+    rejoinAttempts = 0;
+    rejoinChecks = 0;
+    rejoinInFlight = false;
+    // 会话切断标记一并作废：resetRejoin 的四个调用点（submitJoin 的手动
+    // 介入 / joined 的成功入房 / onHostGone / leave）全都意味着"旧会话
+    // 的重建语义到此为止"。若残留为 true，用户手动输入的新码会被下一次
+    // open 误判成重建 —— 输错码将进入 12 次退避循环而非立即报错。
+    sessionSevered = false;
+  }
+
+  // ---------------- 断开处理 ----------------
+  /**
+   * 清传输层 + 重建 vx + 重绑事件 + 清画面。
+   *
+   * 为什么必须销毁整个传输层、不能只清 video：
+   *   - vx.pc 仍持有已死的 RTCPeerConnection（占着资源）；
+   *   - 更关键的是 vx.mode 会停在 'p2p-host' / 'relay'。若此后
+   *     connectionState → failed 触发 scheduleRejoin(false)，决策 1 只有
+   *     === 'relay' 才撤销，残留的 'p2p-host' 会错进决策 2、被当作"P2P 需要
+   *     重建"而空转；残留的 'relay' 则被决策 1 误判成"已处于中继"而撤销。
+   *   destroy() 内部会把 mode 复位成 'connecting'，正是需要的语义。
+   *
+   * 四条"销毁后重建"的路径统一收敛到这里（relay-begin / onHostGone /
+   * leave / open 的 sessionSevered 分支），把"destroy 后必然重建"这个
+   * 隐性契约显式化：将来若有人在 vx.destroy() 里加 bus 事件清理，漏掉
+   * 重建的那条路径会静默黑屏，极难排查。
+   */
+  function teardownTransport() {
+    try { vx && vx.destroy(); } catch {}
+    el.video.srcObject = null;
+    el.video.removeAttribute('src');
+    vx = createViewerTransport(signal);
+    vx.attachVideo(el.video);
+    bindTransport();
+  }
+
+  /**
+   * 复位三组"显示状态开关"，与 teardownTransport 配对使用（会话结束时调用）。
+   *
+   * 这三组状态此前散落在 leave()/onHostGone() 之外，没有统一收口，导致：
+   *   - 黑屏保护（B）后断开，stage 仍带 .blackscreen（背景 #000 而非浅色），
+   *     且 body 光标仍是 cursor:none，待机页上鼠标不可见；
+   *   - 缩放模式（S）切到 cover 后断开再进新房间，视频仍以 objectFit:cover
+   *     显示（用户早已忘记自己切过）。
+   * onHostGone 的"主机停播"路径同样漏了这两处。这里统一复位到初始态
+   * （contain / 非黑屏 / 光标可见），leave 与 onHostGone 各调一次即可。
+   *
+   * 注意**不要**在 open 的 sessionSevered 分支调用：那是同一会话内的
+   * 服务器重启自愈，显示偏好（缩放/黑屏）理应跨断线保留。
+   */
+  function resetDisplayState() {
+    blackout = false;
+    el.stage.classList.remove('blackscreen');
+    el.btnBlack.classList.remove('on');
+    document.body.style.cursor = '';
+    fitMode = 'contain';
+    el.video.style.objectFit = 'contain';
+    el.btnFit.classList.remove('on');
+  }
+
+  function onHostGone(reason) {
+    // 先复位重建状态机。
+    //
+    // 不清会留下两个隐患：
+    //   1) rejoinTimer 可能仍挂起。随后 roomCode 被置空（leave 路径），
+    //      定时器到点执行 doJoin(null, true) → 发 `{type:'join', code:null}`
+    //      → 服务端 String(null).toUpperCase() === 'NULL' → join-failed。
+    //   2) 更隐蔽的是 rejoinInFlight 残留为 true。join-failed handler 里
+    //      `if (rejoinInFlight) { ...; scheduleRejoin(true); return; }` 会据此
+    //      以为是"重建流程内的失败"而走退避续期 —— 虽然因 roomCode 为空
+    //      scheduleRejoin 会早退，但这个残留标记会**污染后续任何一次正常
+    //      join 的失败处理**（把用户的首次手动连接失败误判成重建重试）。
+    resetRejoin();
+    stopStats();
+    el.stage.classList.remove('live');
+    el.video.classList.remove('on');
+    teardownTransport();
+    resetDisplayState();
+    liveSince = 0;
+    el.ovTitle.textContent = '投屏已结束';
+    el.ovDesc.textContent = reason + '。正在等待发送端重新开播，也可以手动输入新的房间码。';
+    el.overlay.classList.remove('gone');
+    el.standby.classList.remove('gone');
+    hideBanner();
+    el.hud.classList.remove('show');
+    joined = false;
+    startAutoWait();
+  }
+
+  /**
+   * 自动重连窗口：持续尝试用原房间码重连。
+   * 发送端"停止 → 重新开始"会换一个新房间码，因此这里要一直等到
+   * 用户手动介入，或成功接上为止；不会因为一次 join-failed 就放弃。
+   */
+  function startAutoWait() {
+    if (!roomCode && !el.codeInput.value) return;
+    autoWaiting = true;
+    autoDeadline = Date.now() + 5 * 60 * 1000; // 最多等 5 分钟
+    setJoinHint('等待发送端开播…');
+    clearInterval(autoRetryTimer);
+    autoRetryTimer = setInterval(() => {
+      if (!autoWaiting) { clearInterval(autoRetryTimer); return; }
+      if (Date.now() > autoDeadline) {
+        autoWaiting = false;
+        clearInterval(autoRetryTimer);
+        setJoinHint('发送端长时间未开播，请确认房间码后重试', true);
+        return;
+      }
+      if (joined) { clearInterval(autoRetryTimer); return; }
+      if (signal && signal.state === 1 && roomCode) doJoin(roomCode, true);
+    }, 3000);
+  }
+
+  function stopAutoWait() {
+    autoWaiting = false;
+    clearInterval(autoRetryTimer);
+    autoRetryTimer = null;
+  }
+
+  function hideOverlay() {
+    el.overlay.classList.add('gone');
+  }
+
+  /** 主动离开房间：作废本地状态并回到待机/遮罩 */
+  function leave() {
+    // 主动断开：必须立刻停掉重建状态机，保证"用户点了断开"之后不再有
+    // 任何自发重连（在途的 rejoin 定时器到点仍会发起一次无意义的 join）。
+    resetRejoin();
+    stopStats();
+    stopAutoWait();
+    if (signal && joined) signal.send({ type: 'leave' });
+    joined = false;
+    liveSince = 0;
+    el.stage.classList.remove('live');
+    el.video.classList.remove('on');
+    teardownTransport();
+    resetDisplayState();
+    el.standby.classList.remove('gone');
+    el.hud.classList.remove('show');
+    hideBanner();
+    roomCode = null;
+    el.codeInput.value = '';
+    el.btnJoin.disabled = false;
+    el.btnJoin.textContent = '连接';
+    setJoinHint('按 Enter 快速连接');
+    // 主动断开不该走 onHostGone：那是"投屏已结束 / 正在等待发送端重新
+    // 开播"的语义，且其 startAutoWait() 因 roomCode 已被清空根本不会启动
+    // —— 浮层文案承诺的"等待开播"是假的，还多绕一次点击。
+    hideOverlay();
+    history.replaceState(null, '', '/view');
+  }
+
+  // ---------------- 全屏 / 黑屏 / 缩放 ----------------
+  function toggleFull() {
+    const d = document;
+    const isFull = d.fullscreenElement || d.webkitFullscreenElement;
+    if (!isFull) {
+      const t = el.stage;
+      (t.requestFullscreen || t.webkitRequestFullscreen || (() => {})).call(t);
+    } else {
+      (d.exitFullscreen || d.webkitExitFullscreen || (() => {})).call(d);
+    }
+  }
+
+  function toggleBlack() {
+    blackout = !blackout;
+    el.stage.classList.toggle('blackscreen', blackout);
+    el.btnBlack.classList.toggle('on', blackout);
+    if (blackout) {
+      // 黑屏时也顺手隐藏光标，保护屏幕
+      document.body.style.cursor = 'none';
+    } else {
+      document.body.style.cursor = '';
+    }
+  }
+
+  function cycleFit() {
+    const i = MODES.indexOf(fitMode);
+    fitMode = MODES[(i + 1) % MODES.length];
+    el.video.style.objectFit = fitMode;
+    el.btnFit.classList.toggle('on', fitMode === 'cover');
+    const names = { contain: '完整显示', cover: '铺满裁切' };
+    showBanner('', names[fitMode], 1200);
+  }
+
+  function hideCursorSoon() {
+    clearTimeout(hudTimer);
+    document.body.style.cursor = '';
+    hudTimer = setTimeout(() => {
+      if (liveSince) {
+        el.hud.classList.remove('show');
+        document.body.style.cursor = 'none';
+      }
+    }, 3000);
+  }
+
+  // ---------------- 统计 ----------------
+  function startStats() {
+    stopStats();
+    statTimer = setInterval(async () => {
+      if (!joined || !liveSince) return;
+      // 中继模式下没有 RTCPeerConnection，report() 会直接返回空对象。
+      // P2P 模式也不是随时都有数据：连接处于 connecting/disconnected/failed
+      // 时 report() 同样返回空 —— 如果直接渲染，HUD 会频繁闪「—」。
+      // 因此统一用 localStats() 兜底补分辨率与帧率（RTT 仍只认 report()）。
+      const isRelay = vx.mode === 'relay' || vx.mode === 'relay-blob';
+      const info = isRelay ? vx.localStats() : await vx.report();
+      const local = (!isRelay && !info.res) ? vx.localStats() : null;
+      const res = info.res || (local && local.res) || null;
+      const fps = info.fps != null ? info.fps : (local ? local.fps : null);
+      el.hudRes.textContent = res || '—';
+      el.hudFps.textContent = fps != null ? fps + ' fps' : '—';
+      el.hudRtt.textContent = info.rtt != null ? info.rtt + ' ms' : '—';
+      const g = gradePath(vx.mode, info);
+      el.hudDot.className = 'dot ' + g.tone;
+      el.hudMode.textContent = g.label;
+    }, 2000);
+  }
+  function stopStats() { clearInterval(statTimer); statTimer = null; }
+
+  // ---------------- 交互绑定 ----------------
+  el.codeInput.addEventListener('input', () => {
+    el.codeInput.value = el.codeInput.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+    setJoinHint('按 Enter 快速连接');
+    // 满 4 位自动尝试
+    if (el.codeInput.value.length === 4 && /^[A-Z0-9]{4}$/.test(el.codeInput.value)) {
+      setTimeout(() => { if (!joined) submitJoin(); }, 260);
+    }
+  });
+  el.codeInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') submitJoin();
+  });
+  el.btnJoin.addEventListener('click', submitJoin);
+
+  el.btnFull.addEventListener('click', toggleFull);
+  el.btnBlack.addEventListener('click', toggleBlack);
+  el.btnFit.addEventListener('click', cycleFit);
+  el.btnExit.addEventListener('click', () => leave());
+
+  el.btnReconnect.addEventListener('click', () => {
+    stopAutoWait();
+    hideOverlay();
+    el.standby.classList.remove('gone');
+    if (roomCode) { doJoin(roomCode); }
+    else { el.codeInput.focus(); }
+    // 若仍未接上，重新进入等待窗口（注意：这里不再回调 onHostGone，
+    // 否则 startAutoWait 会重置截止时间，反复点击会导致等待窗口无限顺延）
+    setTimeout(() => {
+      if (!joined && !autoWaiting) {
+        startAutoWait();
+        setJoinHint('仍未连接到发送端，正在重试…', true);
+      }
+    }, 4000);
+  });
+  el.btnBackHome.addEventListener('click', () => { location.href = '/'; });
+
+  // 键盘快捷键
+  document.addEventListener('keydown', (e) => {
+    const typing = document.activeElement === el.codeInput;
+    if (e.key === 'f' || e.key === 'F') { if (!typing) { e.preventDefault(); toggleFull(); } }
+    if (e.key === 'b' || e.key === 'B') { if (!typing && liveSince) { e.preventDefault(); toggleBlack(); } }
+    if (e.key === 's' || e.key === 'S') { if (!typing && liveSince) { e.preventDefault(); cycleFit(); } }
+    if (e.key === 'Escape' && blackout) toggleBlack();
+  });
+
+  // 鼠标移动显示控制条，3 秒后自动隐藏
+  document.addEventListener('mousemove', () => {
+    if (liveSince) el.hud.classList.add('show');
+    hideCursorSoon();
+  });
+  document.addEventListener('mousedown', () => {
+    if (liveSince) el.hud.classList.add('show');
+    hideCursorSoon();
+  });
+  // 触摸设备：点一下切换控制条
+  document.addEventListener('touchstart', () => {
+    if (!liveSince) return;
+    el.hud.classList.toggle('show');
+    hideCursorSoon();
+  }, { passive: true });
+
+  // 双击画面全屏
+  el.video.addEventListener('dblclick', toggleFull);
+  el.video.addEventListener('click', () => {
+    if (liveSince && el.video.paused) el.video.play().catch(() => {});
+  });
+
+  // 全屏状态同步
+  document.addEventListener('fullscreenchange', () => {
+    const on = !!(document.fullscreenElement || document.webkitFullscreenElement);
+    el.btnFull.classList.toggle('on', on);
+  });
+
+  // 页面重新可见时立即刷一次统计
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden && joined && liveSince) {
+      vx.report();
+      if (el.video.paused) el.video.play().catch(() => {});
+    }
+  });
+
+  window.addEventListener('beforeunload', () => {
+    try { vx && vx.destroy(); } catch {}
+    try { signal && signal.close(); } catch {}
+  });
+
+  // ---------------- 启动 ----------------
+  initSignal();
+
+  const pre = readCodeFromUrl();
+  if (pre && pre.length >= 4) {
+    el.codeInput.value = pre;
+    setJoinHint('正在自动连接…');
+    // 等信令就绪后自动加入
+    const tryAuto = () => {
+      if (signal.state === 1) doJoin(pre);
+      else setTimeout(tryAuto, 200);
+    };
+    tryAuto();
+  } else {
+    setJoinHint('按 Enter 快速连接');
+    setTimeout(() => el.codeInput.focus(), 300);
+  }
+})();
+</script>
+</body>
+</html>
